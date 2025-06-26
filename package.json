@@ -59,8 +59,19 @@
     "completion",
     "ai"
   ],
-  "author": "",
+  "author": "statiolake",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/statiolake/coc-github-copilot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/statiolake/coc-github-copilot/issues"
+  },
+  "homepage": "https://github.com/statiolake/coc-github-copilot#readme",
   "engines": {
     "coc": "^0.0.82"
   },
