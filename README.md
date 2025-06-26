@@ -1,46 +1,34 @@
-# coc-github-copilot
+# @statiolake/coc-github-copilot
 
-GitHub Copilot extension for coc.nvim with inline completion support.
+GitHub Copilot extension for coc.nvim using the official GitHub Copilot Language Server.
 
 ## Features
 
-- GitHub Copilot integration with coc.nvim
-- Device authentication flow for GitHub
-- Inline completions support
-- Configurable settings
-- Commands for managing Copilot status
+- 🤖 GitHub Copilot integration with coc.nvim
+- 🔐 Device authentication flow
+- ⚡ Automatic inline completions via Language Server
+- 🛠️ Simple configuration
+- 🔌 Seamless Language Server integration
 
 ## Installation
 
-### Prerequisites
-
-- [coc.nvim](https://github.com/neoclide/coc.nvim) installed
-- Node.js 16+ 
-- GitHub Copilot subscription
-
-### Install from source
+### From npm
 
 ```bash
-git clone https://github.com/your-username/coc-github-copilot.git
-cd coc-github-copilot
-npm install
-npm run build
-npm link
+npm install -g @statiolake/coc-github-copilot
 ```
 
-Then in your vim/neovim config, add the extension:
+Or in Vim/Neovim:
 
 ```vim
-:CocInstall coc-github-copilot
+:CocInstall @statiolake/coc-github-copilot
 ```
 
-Or add to your coc-settings.json:
+### Prerequisites
 
-```json
-{
-  "coc.preferences.extensionUpdateCheck": "daily"
-}
-```
+- [coc.nvim](https://github.com/neoclide/coc.nvim) 0.0.82+
+- Node.js 16+
+- GitHub Copilot subscription
 
 ## Setup
 
@@ -52,87 +40,24 @@ Or add to your coc-settings.json:
 ## Commands
 
 - `:CocCommand copilot.signIn` - Sign in to GitHub Copilot
-- `:CocCommand copilot.signOut` - Sign out from GitHub Copilot  
+- `:CocCommand copilot.signOut` - Sign out from GitHub Copilot
 - `:CocCommand copilot.status` - Show current authentication status
 - `:CocCommand copilot.enable` - Enable Copilot suggestions
 - `:CocCommand copilot.disable` - Disable Copilot suggestions
 
 ## Configuration
 
-Add these settings to your `coc-settings.json`:
-
-```json
-{
-  "copilot.enable": true,
-  "copilot.priority": 1000,
-  "copilot.limit": 10,
-  "copilot.shortcut": "Cop"
-}
-```
-
-### Settings
-
-- `copilot.enable` (boolean, default: `true`) - Enable/disable GitHub Copilot
-- `copilot.priority` (number, default: `1000`) - Priority of copilot completion source
-- `copilot.limit` (number, default: `10`) - Maximum number of completion items
-- `copilot.shortcut` (string, default: `"Cop"`) - Shortcut text shown in completion menu
+The extension works out of the box with minimal configuration. All settings are managed through the Language Server.
 
 ## Usage
 
 Once authenticated and enabled, Copilot will automatically provide completions in the coc.nvim completion menu.
 
-### Keybindings  
-
-You can add custom keybindings in your vim configuration:
-
-```vim
-" Accept completion 
-inoremap <silent><expr> <Tab> coc#pum#visible() ? coc#pum#confirm() : "\<Tab>"
-
-" Trigger completion manually
-inoremap <silent><expr> <C-Space> coc#refresh()
-
-" Navigate completions
-inoremap <silent><expr> <C-n> coc#pum#visible() ? coc#pum#next(1) : "\<C-n>"
-inoremap <silent><expr> <C-p> coc#pum#visible() ? coc#pum#prev(1) : "\<C-p>"
-
-" Toggle Copilot
-nnoremap <leader>ct :CocCommand copilot.enable<CR>
-nnoremap <leader>cd :CocCommand copilot.disable<CR>
-```
-
-## Troubleshooting
-
-### Authentication Issues
-
-If you're having trouble signing in:
-
-1. Make sure you have a GitHub Copilot subscription
-2. Check your internet connection  
-3. Try signing out and signing in again: `:CocCommand copilot.signOut` then `:CocCommand copilot.signIn`
-
-### No Completions
-
-If you're not getting completions:
-
-1. Check if Copilot is enabled: `:CocCommand copilot.status`
-2. Verify your authentication status
-3. Check the coc.nvim output: `:CocCommand workspace.showOutput`
-4. Try triggering completion manually with `Ctrl+Space`
-
-### Performance Issues
-
-If you experience performance issues:
-
-1. Reduce `copilot.limit` to a lower number (e.g., 5)
-2. Adjust `copilot.priority` to control source ordering
-3. Adjust coc.nvim completion settings
-
 ## Development
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/coc-github-copilot.git
+git clone https://github.com/statiolake/coc-github-copilot.git
 cd coc-github-copilot
 
 # Install dependencies
