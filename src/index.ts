@@ -134,7 +134,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   }
 
   copilotClient = new LanguageClient('copilot', 'GitHub Copilot', serverOptions, clientOptions);
-  context.subscriptions.push(services.registLanguageClient(copilotClient));
+  context.subscriptions.push(services.registerLanguageClient(copilotClient));
 
   await copilotClient.onReady();
   
