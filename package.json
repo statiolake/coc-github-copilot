@@ -1,5 +1,5 @@
 {
-  "name": "coc-github-copilot",
+  "name": "@statiolake/coc-github-copilot",
   "version": "1.0.0",
   "description": "GitHub Copilot extension for coc.nvim with inline completion support",
   "main": "lib/index.js",

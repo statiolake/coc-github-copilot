@@ -26,7 +26,11 @@ class CopilotAuthManager {
     
     // Listen for status change notifications
     this.client.onNotification('didChangeStatus', (params: StatusNotification) => {
-      // Update authentication status based on the kind
+      console.log('Copilot status update:', params.kind, params.message);
+      
+      // Update authentication status based on the kind and message
+      const wasSignedIn = this.isSignedIn;
+      
       if (params.kind === 'Normal') {
         this.isSignedIn = true;
         // Try to extract user from message
@@ -36,11 +40,37 @@ class CopilotAuthManager {
             this.user = match[1].trim();
           }
         }
+        if (!wasSignedIn) {
+          console.log('Copilot: Authentication state changed to signed in');
+        }
       } else if (params.kind === 'Error') {
-        this.isSignedIn = false;
-        this.user = undefined;
+        // Only consider it as "not signed in" if the message explicitly says so
+        if (params.message && params.message.toLowerCase().includes('not signed')) {
+          this.isSignedIn = false;
+          this.user = undefined;
+          if (wasSignedIn) {
+            console.log('Copilot: Authentication state changed to signed out');
+          }
+        }
+        // For other errors, don't change authentication state
+      } else if (params.kind === 'Warning' || params.kind === 'Inactive') {
+        // Don't change authentication state for warnings or inactive status
       }
     });
+    
+    // Request initial status
+    setTimeout(() => {
+      this.checkInitialStatus();
+    }, 1000);
+  }
+
+  private async checkInitialStatus(): Promise<void> {
+    try {
+      // The language server should have sent a didChangeStatus notification by now
+      console.log('Initial auth check - isSignedIn:', this.isSignedIn);
+    } catch (error) {
+      console.log('Could not check initial status:', error);
+    }
   }
 
   async signIn(): Promise<boolean> {
@@ -186,6 +216,12 @@ export async function activate(context: ExtensionContext): Promise<void> {
   
   // Initialize auth manager
   authManager = new CopilotAuthManager(copilotClient);
+  
+  // Check initial authentication status
+  setTimeout(async () => {
+    // Give the language server some time to initialize and send status
+    // Remove any automatic sign-in prompts for now
+  }, 2000);
 
   // Register commands
   context.subscriptions.push(
@@ -216,17 +252,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
     })
   );
 
-  // Auto sign-in on activation if not authenticated
-  if (!authManager.isAuthenticated()) {
-    window.showInformationMessage(
-      'GitHub Copilot: Please sign in to use Copilot',
-      'Sign In'
-    ).then(selection => {
-      if (selection === 'Sign In') {
-        commands.executeCommand('copilot.signIn');
-      }
-    });
-  }
+  // Check authentication status after initialization
+  setTimeout(() => {
+    if (!authManager.isAuthenticated()) {
+      // Only show sign-in prompt if explicitly needed and not already shown
+      console.log('GitHub Copilot: Not authenticated on startup');
+    } else {
+      console.log('GitHub Copilot: Already authenticated on startup');
+    }
+  }, 3000);
 }
 
 export async function deactivate(): Promise<void> {
