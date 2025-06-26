@@ -1,0 +1,76 @@
+{
+  "name": "coc-github-copilot",
+  "version": "1.0.0",
+  "description": "GitHub Copilot extension for coc.nvim with inline completion support",
+  "main": "lib/index.js",
+  "activationEvents": [
+    "*"
+  ],
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "GitHub Copilot configuration",
+      "properties": {
+        "copilot.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable GitHub Copilot"
+        },
+        "copilot.trace.server": {
+          "type": "string",
+          "default": "off",
+          "enum": ["off", "messages", "trace"],
+          "description": "Trace GitHub Copilot Language Server communication"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "copilot.signIn",
+        "title": "Sign in to GitHub Copilot"
+      },
+      {
+        "command": "copilot.signOut",
+        "title": "Sign out from GitHub Copilot"
+      },
+      {
+        "command": "copilot.status",
+        "title": "Show GitHub Copilot status"
+      },
+      {
+        "command": "copilot.enable",
+        "title": "Enable GitHub Copilot"
+      },
+      {
+        "command": "copilot.disable",
+        "title": "Disable GitHub Copilot"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "coc.nvim",
+    "github",
+    "copilot",
+    "completion",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "coc": "^0.0.82"
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "coc.nvim": "^0.0.83-next.9",
+    "typescript": "^5.8.3",
+    "@types/node": "^20.0.0"
+  },
+  "dependencies": {
+    "@github/copilot-language-server": "^1.338.0"
+  }
+}
