@@ -1,6 +1,6 @@
 {
   "name": "@statiolake/coc-github-copilot",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "GitHub Copilot extension for coc.nvim with inline completion support",
   "main": "lib/index.js",
   "activationEvents": [
@@ -19,7 +19,11 @@
         "copilot.trace.server": {
           "type": "string",
           "default": "off",
-          "enum": ["off", "messages", "trace"],
+          "enum": [
+            "off",
+            "messages",
+            "trace"
+          ],
           "description": "Trace GitHub Copilot Language Server communication"
         }
       }
