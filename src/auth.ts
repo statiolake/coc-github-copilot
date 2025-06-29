@@ -1,4 +1,4 @@
-import { LanguageClient, window } from 'coc.nvim';
+import { LanguageClient, window, workspace } from 'coc.nvim';
 import { SignInResult, StatusNotification } from './types';
 
 export class CopilotAuthManager {
@@ -32,8 +32,15 @@ export class CopilotAuthManager {
       if (result?.userCode) {
         const proceed = await window.showInformationMessage(
           `GitHub Copilot: Go to https://github.com/login/device and enter code: ${result.userCode}`,
-          'Open Browser and Continue'
+          'Open Browser and Continue',
+          'Copy Code'
         );
+        
+        if (proceed === 'Copy Code') {
+          await this.copyToClipboard(result.userCode);
+          window.showInformationMessage('GitHub Copilot: Code copied to clipboard');
+          return false;
+        }
         
         if (proceed === 'Open Browser and Continue') {
           try {
@@ -78,6 +85,14 @@ export class CopilotAuthManager {
 
   getUser(): string | undefined {
     return this.user;
+  }
+
+  private async copyToClipboard(text: string): Promise<void> {
+    try {
+      await workspace.nvim.call('setreg', ['+', text]);
+    } catch (error) {
+      console.warn('GitHub Copilot: Failed to copy to clipboard:', error);
+    }
   }
 
   private async pollForSignIn(): Promise<boolean> {
