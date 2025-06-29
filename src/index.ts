@@ -1,6 +1,6 @@
-import { ExtensionContext, LanguageClient, services } from 'coc.nvim';
+import { type ExtensionContext, type LanguageClient, services } from 'coc.nvim';
 import { CopilotAuthManager } from './auth';
-import { createLanguageClient, configureClient } from './client';
+import { configureClient, createLanguageClient } from './client';
 import { registerCommands } from './commands';
 
 let copilotClient: LanguageClient | undefined;
@@ -12,10 +12,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
 
   await copilotClient.onReady();
   await configureClient(copilotClient);
-  
+
   authManager = new CopilotAuthManager(copilotClient);
   registerCommands(context, authManager);
 }
 
-export async function deactivate(): Promise<void> {
-}
+export async function deactivate(): Promise<void> {}

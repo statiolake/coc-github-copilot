@@ -54,6 +54,13 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --fix .",
+    "check": "biome check .",
+    "check:fix": "biome check --fix .",
+    "prepare": "husky",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -81,11 +88,19 @@
   },
   "type": "commonjs",
   "devDependencies": {
+    "@biomejs/biome": "^2.0.6",
+    "@types/node": "^20.0.0",
     "coc.nvim": "^0.0.83-next.9",
-    "typescript": "^5.8.3",
-    "@types/node": "^20.0.0"
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "@github/copilot-language-server": "^1.338.0"
+  },
+  "lint-staged": {
+    "*.{ts,js,json}": [
+      "biome check --fix --no-errors-on-unmatched"
+    ]
   }
 }

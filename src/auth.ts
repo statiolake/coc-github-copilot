@@ -1,14 +1,14 @@
-import { LanguageClient, window, workspace } from 'coc.nvim';
-import { SignInResult, StatusNotification } from './types';
+import { type LanguageClient, window, workspace } from 'coc.nvim';
+import type { SignInResult, StatusNotification } from './types';
 
 export class CopilotAuthManager {
   private client: LanguageClient;
-  private isSignedIn: boolean = false;
+  private isSignedIn = false;
   private user: string | undefined;
 
   constructor(client: LanguageClient) {
     this.client = client;
-    
+
     this.client.onNotification('didChangeStatus', (params: StatusNotification) => {
       if (params.kind === 'Normal') {
         this.isSignedIn = true;
@@ -27,39 +27,38 @@ export class CopilotAuthManager {
 
   async signIn(): Promise<boolean> {
     try {
-      const result = await this.client.sendRequest('signIn', {}) as SignInResult;
-      
+      const result = (await this.client.sendRequest('signIn', {})) as SignInResult;
+
       if (result?.userCode) {
         const proceed = await window.showInformationMessage(
           `GitHub Copilot: Go to https://github.com/login/device and enter code: ${result.userCode}`,
           'Open Browser and Continue',
           'Copy Code'
         );
-        
+
         if (proceed === 'Copy Code') {
           await this.copyToClipboard(result.userCode);
           window.showInformationMessage('GitHub Copilot: Code copied to clipboard');
           return false;
         }
-        
+
         if (proceed === 'Open Browser and Continue') {
           try {
             await this.client.sendRequest('workspace/executeCommand', {
               command: result.command.command,
-              arguments: result.command.arguments
+              arguments: result.command.arguments,
             });
-          } catch (commandError) {
+          } catch (_commandError) {
             // Silently continue if command fails
           }
-          
+
           const success = await this.pollForSignIn();
           if (success) {
             const userDisplay = this.user ? ` as ${this.user}` : '';
             window.showInformationMessage(`GitHub Copilot: Successfully signed in${userDisplay}`);
             return true;
-          } else {
-            window.showErrorMessage('GitHub Copilot: Authentication timed out. Please try again.');
           }
+          window.showErrorMessage('GitHub Copilot: Authentication timed out. Please try again.');
         }
       }
     } catch (error) {
@@ -98,7 +97,7 @@ export class CopilotAuthManager {
   private async pollForSignIn(): Promise<boolean> {
     const maxAttempts = 120;
     for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
       if (this.isSignedIn) return true;
     }
     return false;

@@ -1,5 +1,5 @@
-import { commands, workspace, window, ExtensionContext } from 'coc.nvim';
-import { CopilotAuthManager } from './auth';
+import { commands, type ExtensionContext, window, workspace } from 'coc.nvim';
+import type { CopilotAuthManager } from './auth';
 
 export function registerCommands(context: ExtensionContext, authManager: CopilotAuthManager): void {
   context.subscriptions.push(

@@ -2,7 +2,7 @@ export interface SignInResult {
   userCode: string;
   command: {
     command: string;
-    arguments: any[];
+    arguments: unknown[];
     title: string;
   };
 }
