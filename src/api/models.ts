@@ -1,6 +1,5 @@
 // Model-related types and model management
 
-import fetch from 'node-fetch';
 import {
   type ApiToken,
   extractOauthTokenFromConfig,

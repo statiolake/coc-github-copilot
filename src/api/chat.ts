@@ -1,6 +1,8 @@
 // Chat implementation and streaming logic
 
-import fetch, { type Response } from 'node-fetch';
+// Native fetch Response type
+type FetchResponse = Response;
+
 import type { ApiToken } from './auth';
 import type { CopilotChatConfig } from './config';
 import type { Model } from './models';
@@ -173,7 +175,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
   }
 
   private async *createStreamIterator(
-    response: Response,
+    response: FetchResponse,
     token?: CancellationToken
   ): AsyncIterable<LanguageModelTextPart | LanguageModelToolCallPart | unknown> {
     if (!response.body) return;
@@ -234,7 +236,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
   }
 
   private async *createTextIterator(
-    response: Response,
+    response: FetchResponse,
     token?: AbortSignal
   ): AsyncIterable<string> {
     for await (const part of this.createStreamIterator(
