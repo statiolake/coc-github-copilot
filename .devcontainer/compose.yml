@@ -11,13 +11,3 @@ services:
 
     # Keep container running
     command: sleep infinity
-
-    # Add capabilities needed for development
-    cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - seccomp:unconfined
-
-    # Environment variables
-    environment:
-      - DEBIAN_FRONTEND=noninteractive

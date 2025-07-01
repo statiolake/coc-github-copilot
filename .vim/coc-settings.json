@@ -1,5 +1,10 @@
 {
   "[typescript][json]": {
     "coc.preferences.formatterExtension": "coc-biome"
-  }
+  },
+  "tsserver.enable": true,
+  "deno.enable": false,
+  "deno.lint": false,
+  "coc.source.file.trimSameExts": [".js", ".ts"],
+  "prettier.disableLanguages": []
 }

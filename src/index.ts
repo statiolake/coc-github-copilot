@@ -1,20 +1,16 @@
-import { type ExtensionContext, type LanguageClient, services } from 'coc.nvim';
-import { CopilotAuthManager } from './auth';
-import { configureClient, createLanguageClient } from './client';
-import { registerCommands } from './commands';
+// Main extension entry point - exports LM namespace directly for coc.nvim extensions
+import type { ExtensionContext } from 'coc.nvim';
+import { createLMNamespace } from './api';
+import type { LMNamespace } from './api/types';
+import { initializeSuggestionFeatures } from './suggestion';
 
-let copilotClient: LanguageClient | undefined;
-let authManager: CopilotAuthManager;
+export async function activate(context: ExtensionContext): Promise<LMNamespace> {
+  // Initialize suggestion functionality (language server, auth, commands)
+  await initializeSuggestionFeatures(context);
 
-export async function activate(context: ExtensionContext): Promise<void> {
-  copilotClient = createLanguageClient(context);
-  context.subscriptions.push(services.registerLanguageClient(copilotClient));
-
-  await copilotClient.onReady();
-  await configureClient(copilotClient);
-
-  authManager = new CopilotAuthManager(copilotClient);
-  registerCommands(context, authManager);
+  // Create and return the LM namespace directly
+  // This matches the lm.d.ts interface where the namespace is returned "as is"
+  return createLMNamespace();
 }
 
 export async function deactivate(): Promise<void> {}

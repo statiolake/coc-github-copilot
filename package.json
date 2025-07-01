@@ -96,7 +96,9 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "@github/copilot-language-server": "^1.338.0"
+    "@github/copilot-language-server": "^1.338.0",
+    "@types/node-fetch": "^2.6.12",
+    "node-fetch": "^3.3.2"
   },
   "lint-staged": {
     "*.{ts,js,json}": [
