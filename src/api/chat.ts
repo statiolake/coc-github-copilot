@@ -3,6 +3,9 @@
 // Native fetch Response type
 type FetchResponse = Response;
 
+// Node.js compatible TextDecoder
+const TextDecoder = globalThis.TextDecoder || require('node:util').TextDecoder;
+
 import type { ApiToken } from './auth';
 import type { CopilotChatConfig } from './config';
 import type { Model } from './models';
@@ -69,7 +72,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
     this.family = model.capabilities.family;
     this.name = model.name;
     this.version = '1.0'; // Default version
-    this.maxInputTokens = model.capabilities.limits.maxPromptTokens;
+    this.maxInputTokens = model.capabilities.limits.maxPromptTokens || 128000;
     this.config = config;
     this.getApiToken = getApiToken;
   }

@@ -48,6 +48,10 @@
       {
         "command": "copilot.disable",
         "title": "Disable GitHub Copilot"
+      },
+      {
+        "command": "copilot.testChat",
+        "title": "Test GitHub Copilot Chat (Rust FizzBuzz)"
       }
     ]
   },
