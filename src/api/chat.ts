@@ -127,7 +127,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
       return {
         stream: this.createStreamIterator(response, token),
-        text: this.createTextIterator(response, token as unknown as AbortSignal),
+        text: this.createTextIterator(response, token),
       };
     } catch (error) {
       if (error instanceof LanguageModelError) {
@@ -180,8 +180,9 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
   ): AsyncIterable<LanguageModelTextPart | LanguageModelToolCallPart | unknown> {
     if (!response.body) return;
 
-    const reader = (response.body as unknown as ReadableStream<Uint8Array>).getReader();
+    const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
 
     try {
       while (true) {
@@ -190,8 +191,11 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+
+        // Keep the last incomplete line in buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (token?.isCancellationRequested) return;
@@ -204,12 +208,15 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
           try {
             const event: ResponseEvent = JSON.parse(data);
-            const content = event.choices[0]?.delta?.content;
+            const choice = event.choices[0];
+            if (!choice) continue;
+
+            const content = choice.delta?.content || choice.message?.content;
             if (content) {
               yield new LanguageModelTextPart(content);
             }
 
-            const toolCalls = event.choices[0]?.delta?.toolCalls;
+            const toolCalls = choice.delta?.toolCalls || choice.message?.toolCalls;
             if (toolCalls && Array.isArray(toolCalls)) {
               for (const toolCall of toolCalls) {
                 const tc = toolCall as {
@@ -217,11 +224,12 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
                   function?: { name?: string; arguments?: string };
                 };
                 if (tc.id && tc.function) {
-                  yield new LanguageModelToolCallPart(
-                    tc.id,
-                    tc.function.name || '',
-                    JSON.parse(tc.function.arguments || '{}')
-                  );
+                  try {
+                    const args = tc.function.arguments ? JSON.parse(tc.function.arguments) : {};
+                    yield new LanguageModelToolCallPart(tc.id, tc.function.name || '', args);
+                  } catch {
+                    // Skip invalid tool call arguments
+                  }
                 }
               }
             }
@@ -237,12 +245,9 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
   private async *createTextIterator(
     response: FetchResponse,
-    token?: AbortSignal
+    token?: CancellationToken
   ): AsyncIterable<string> {
-    for await (const part of this.createStreamIterator(
-      response,
-      token as unknown as CancellationToken
-    )) {
+    for await (const part of this.createStreamIterator(response, token)) {
       if (part instanceof LanguageModelTextPart) {
         yield part.value;
       }

@@ -1,5 +1,6 @@
 // Model-related types and model management
 
+import { Emitter } from 'coc.nvim';
 import {
   type ApiToken,
   extractOauthTokenFromConfig,
@@ -7,7 +8,7 @@ import {
   requestApiToken,
 } from './auth';
 import type { CopilotChatConfig } from './config';
-import type { LanguageModelChat, LanguageModelChatSelector } from './types';
+import type { Event, LanguageModelChat, LanguageModelChatSelector } from './types';
 import { LanguageModelError } from './types';
 
 const DEFAULT_MODEL_ID = 'gpt-4.1';
@@ -60,6 +61,9 @@ export class LanguageModelManager {
   private oauthToken?: string;
   private apiToken?: ApiToken;
   private models?: Model[];
+  private _onDidChangeChatModels = new Emitter<void>();
+
+  readonly onDidChangeChatModels: Event<void> = this._onDidChangeChatModels.event;
 
   constructor(config: CopilotChatConfig) {
     this.config = config;
@@ -91,10 +95,32 @@ export class LanguageModelManager {
     }
 
     const filteredModels = this.models.filter((model) => {
-      if (selector.vendor && model.vendor !== selector.vendor) return false;
-      if (selector.family && !model.capabilities.family.includes(selector.family)) return false;
-      if (selector.id && model.id !== selector.id) return false;
-      if (selector.version && selector.version !== '1.0') return false; // Default version matching
+      // Vendor filtering - map VS Code vendors to GitHub Copilot vendors
+      if (selector?.vendor) {
+        const vendorMapping: Record<string, string> = {
+          copilot: 'OpenAI',
+          openai: 'OpenAI',
+          anthropic: 'Anthropic',
+          google: 'Google',
+        };
+        const mappedVendor = vendorMapping[selector.vendor.toLowerCase()];
+        if (mappedVendor && model.vendor !== mappedVendor) return false;
+        if (!mappedVendor && model.vendor !== selector.vendor) return false;
+      }
+
+      // Family filtering - exact match or partial match
+      if (selector?.family) {
+        if (!model.capabilities.family.toLowerCase().includes(selector.family.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // ID filtering - exact match
+      if (selector?.id && model.id !== selector.id) return false;
+
+      // Version filtering - currently all models are version 1.0
+      if (selector?.version && selector.version !== '1.0') return false;
+
       return true;
     });
 
@@ -158,10 +184,15 @@ export class LanguageModelManager {
       }
 
       this.models = models;
+      this._onDidChangeChatModels.fire();
     } catch (error) {
       console.error('Failed to update models:', error);
       throw LanguageModelError.NotFound('Failed to load models');
     }
+  }
+
+  dispose(): void {
+    this._onDidChangeChatModels.dispose();
   }
 
   private loadOauthToken(): string | undefined {

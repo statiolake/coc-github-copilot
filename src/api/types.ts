@@ -1,14 +1,22 @@
-// Language Model API Types - Compatible with lm.d.ts interface
+// Language Model API Types - Fully compatible with VS Code lm namespace
 
-export type { CancellationToken } from 'coc.nvim';
+export type { CancellationToken, Disposable, Event } from 'coc.nvim';
 
-import type { CancellationToken } from 'coc.nvim';
+import type { CancellationToken, Disposable, Event } from 'coc.nvim';
 
 interface Thenable<T> extends PromiseLike<T> {}
 
 // Main lm namespace interface - this is what gets exported
 export interface LMNamespace {
+  readonly tools: readonly LanguageModelToolInformation[];
+  readonly onDidChangeChatModels: Event<void>;
   selectChatModels(selector?: LanguageModelChatSelector): Thenable<LanguageModelChat[]>;
+  registerTool<T>(name: string, tool: LanguageModelTool<T>): Disposable;
+  invokeTool(
+    name: string,
+    options: LanguageModelToolInvocationOptions<object>,
+    token?: CancellationToken
+  ): Thenable<LanguageModelToolResult>;
 }
 
 // Chat model selector
@@ -35,7 +43,7 @@ export interface LanguageModelChat {
   countTokens(text: string | LanguageModelChatMessage, token?: CancellationToken): Thenable<number>;
 }
 
-// Chat message class - simple data class
+// Chat message class - matches VS Code API exactly
 export class LanguageModelChatMessage {
   role: LanguageModelChatMessageRole;
   content: Array<LanguageModelTextPart | LanguageModelToolResultPart | LanguageModelToolCallPart>;
@@ -103,6 +111,35 @@ export interface LanguageModelChatTool {
 export enum LanguageModelChatToolMode {
   Auto = 1,
   Required = 2,
+}
+
+// Tool registration interfaces
+export interface LanguageModelToolInformation {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema?: object;
+}
+
+export interface LanguageModelTool<T> {
+  invoke(
+    options: LanguageModelToolInvocationOptions<T>,
+    token: CancellationToken
+  ): Thenable<LanguageModelToolResult>;
+}
+
+export interface LanguageModelToolInvocationOptions<T> {
+  readonly input: T;
+  readonly toolInvocationToken: LanguageModelToolInvocationToken;
+}
+
+export interface LanguageModelToolInvocationToken {
+  readonly requestId: string;
+  readonly participantName: string;
+  readonly command?: string;
+}
+
+export interface LanguageModelToolResult {
+  readonly content: Array<LanguageModelTextPart | LanguageModelToolResultPart>;
 }
 
 // Message part classes - simple data classes
