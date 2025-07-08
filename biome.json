@@ -9,6 +9,7 @@
       "!**/node_modules/**",
       "!**/lib/**",
       "!**/dist/**",
+      "!**/scripts/**",
       "!lm.d.ts"
     ]
   },
@@ -18,10 +19,11 @@
     "rules": {
       "recommended": true,
       "correctness": {
-        "noUnusedVariables": "error"
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error"
       },
       "style": {
-        "noNonNullAssertion": "off",
+        "noNonNullAssertion": "error",
         "noParameterAssign": "error",
         "useAsConstAssertion": "error",
         "useDefaultParameterLast": "error",
@@ -31,7 +33,34 @@
         "noUnusedTemplateLiteral": "error",
         "useNumberNamespace": "error",
         "noInferrableTypes": "error",
-        "noUselessElse": "error"
+        "noUselessElse": "error",
+        "useShorthandFunctionType": "error",
+        "useConsistentArrayType": "error"
+      },
+      "suspicious": {
+        "noDoubleEquals": "error",
+        "noExplicitAny": "error",
+        "noConfusingVoidType": "error",
+        "noUnsafeDeclarationMerging": "error"
+      },
+      "complexity": {
+        "noUselessRename": "error",
+        "noUselessConstructor": "error",
+        "noUselessEmptyExport": "error",
+        "noUselessFragments": "error",
+        "noUselessLabel": "error",
+        "noUselessLoneBlockStatements": "error",
+        "noUselessSwitchCase": "error",
+        "noUselessTernary": "error",
+        "noUselessTypeConstraint": "error",
+        "useArrowFunction": "error",
+        "useLiteralKeys": "error",
+        "useOptionalChain": "error",
+        "useSimplifiedLogicExpression": "error"
+      },
+      "nursery": {
+        "noUnassignedVariables": "error",
+        "useUnifiedTypeSignature": "error"
       }
     }
   },

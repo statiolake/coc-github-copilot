@@ -11,16 +11,23 @@ import {
   window,
   workspace,
 } from 'coc.nvim';
+import { z } from 'zod';
 
-// Types for suggestion functionality
-export interface SignInResult {
-  userCode: string;
-  command: {
-    command: string;
-    arguments: unknown[];
-    title: string;
-  };
-}
+// Zod schemas for GitHub Copilot Language Server - these are the source of truth
+const SignInCommandSchema = z.object({
+  command: z.string(),
+  arguments: z.array(z.unknown()),
+  title: z.string(),
+});
+
+const SignInResultSchema = z.object({
+  userCode: z.string(),
+  command: SignInCommandSchema,
+});
+
+// Export inferred types
+export type SignInCommand = z.infer<typeof SignInCommandSchema>;
+export type SignInResult = z.infer<typeof SignInResultSchema>;
 
 export interface StatusNotification {
   message: string;
@@ -55,7 +62,15 @@ export class CopilotAuthManager {
 
   async signIn(): Promise<boolean> {
     try {
-      const result = (await this.client.sendRequest('signIn', {})) as SignInResult;
+      const rawResult = await this.client.sendRequest('signIn', {});
+      const parseResult = SignInResultSchema.safeParse(rawResult);
+
+      if (!parseResult.success) {
+        console.error('Invalid sign-in result:', parseResult.error);
+        throw new Error(`Invalid sign-in response format: ${parseResult.error.message}`);
+      }
+
+      const result = parseResult.data;
 
       if (result?.userCode) {
         const proceed = await window.showInformationMessage(

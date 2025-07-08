@@ -1,10 +1,9 @@
 // Main extension entry point - exports LM namespace directly for coc.nvim extensions
 import { commands, type ExtensionContext, window, workspace } from 'coc.nvim';
 import { createLMNamespace } from './api';
-import type { LanguageModelChat, LMNamespace } from './api/types';
+import type { LanguageModelChat, LanguageModelChatResponse, LMNamespace } from './api/types';
 import {
   LanguageModelChatMessage,
-  LanguageModelChatToolMode,
   LanguageModelTextPart,
   LanguageModelToolCallPart,
 } from './api/types';
@@ -135,7 +134,7 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
 
         // ツール1: 現在時刻を取得
         const timeToolDisposable = lm.registerTool('getCurrentTime', {
-          invoke: async (options, token) => {
+          invoke: async (options, _token) => {
             console.log('getCurrentTime tool invoked with:', options.input);
             const now = new Date();
             return {
@@ -146,12 +145,34 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
 
         // ツール2: 簡単な計算
         const calcToolDisposable = lm.registerTool('calculate', {
-          invoke: async (options, token) => {
+          invoke: async (options, _token) => {
             console.log('calculate tool invoked with:', options.input);
-            const input = options.input as { expression: string };
+
+            // 型ガードを使用した安全な型チェック
+            const isValidInput = (input: unknown): input is { expression: string } => {
+              if (typeof input !== 'object' || input === null || !('expression' in input)) {
+                return false;
+              }
+              const inputObj = input as Record<string, unknown>;
+              return typeof inputObj.expression === 'string';
+            };
+
+            if (!isValidInput(options.input)) {
+              return {
+                content: [new LanguageModelTextPart('計算エラー: 不正な入力形式です')],
+              };
+            }
+
+            const input = options.input;
             try {
-              // 安全な計算のため、evalは使わずに簡単な四則演算のみ
-              const result = eval(input.expression.replace(/[^0-9+\-*/().]/g, ''));
+              // 安全な計算のため、Function constructorを使用（evalより安全）
+              const sanitized = input.expression.replace(/[^0-9+\-*/(). ]/g, '');
+              if (sanitized !== input.expression) {
+                return {
+                  content: [new LanguageModelTextPart('計算エラー: 不正な文字が含まれています')],
+                };
+              }
+              const result = Function(`"use strict"; return (${sanitized})`)();
               return {
                 content: [new LanguageModelTextPart(`計算結果: ${input.expression} = ${result}`)],
               };
@@ -165,10 +186,10 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
 
         // ツール3: ファイルシステム情報
         const fsInfoToolDisposable = lm.registerTool('getWorkspaceInfo', {
-          invoke: async (options, token) => {
+          invoke: async (options, _token) => {
             console.log('getWorkspaceInfo tool invoked with:', options.input);
             const fs = require('node:fs');
-            const path = require('node:path');
+            const _path = require('node:path');
 
             try {
               const currentDir = process.cwd();
@@ -193,12 +214,8 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
           `GitHub Copilot: ${lm.tools.length}個のテストツールを登録しました`
         );
 
-        // ツールを解除する仕組みを保存（実際のアプリではこれは適切に管理する）
-        (globalThis as any).__testToolDisposables = [
-          timeToolDisposable,
-          calcToolDisposable,
-          fsInfoToolDisposable,
-        ];
+        // ツールのdisposableを適切に管理
+        context.subscriptions.push(timeToolDisposable, calcToolDisposable, fsInfoToolDisposable);
       } catch (error) {
         console.error('Tool registration error:', error);
         window.showErrorMessage(`ツール登録エラー: ${error}`);
@@ -243,23 +260,24 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
         await appendToBuffer(`✅ モデル選択完了: ${model.name} (${model.id})\n\n`);
 
         // ユーザーメッセージを表示
-        const userMessage = '現在時刻を教えてください。また、2 + 3 * 4 の計算もしてください。ワークスペースの情報も知りたいです。';
+        const userMessage =
+          '現在時刻を教えてください。また、2 + 3 * 4 の計算もしてください。ワークスペースの情報も知りたいです。';
         await appendToBuffer(`## ユーザーメッセージ\n${userMessage}\n\n`);
 
         // ツール情報を含むメッセージを作成
-        const messages = [
-          LanguageModelChatMessage.User(userMessage),
-        ];
+        const messages = [LanguageModelChatMessage.User(userMessage)];
 
-        await appendToBuffer(`## 利用可能なツール\n`);
+        await appendToBuffer('## 利用可能なツール\n');
         lm.tools.forEach(async (tool, index) => {
-          await appendToBuffer(`${index + 1}. **${tool.name}**: ${tool.description || 'ツール説明なし'}\n`);
+          await appendToBuffer(
+            `${index + 1}. **${tool.name}**: ${tool.description || 'ツール説明なし'}\n`
+          );
         });
         await appendToBuffer('\n## GitHub Copilot の回答\n');
 
         // 利用可能なツールをオプションに含める（GitHub Copilot API形式）
         const chatTools = lm.tools.map((tool) => {
-          let parameters = {
+          let parameters: unknown = {
             type: 'object',
             properties: {},
           };
@@ -275,7 +293,7 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
                 },
               },
               required: ['expression'],
-            } as any;
+            };
           } else if (tool.name === 'getCurrentTime' || tool.name === 'getWorkspaceInfo') {
             parameters = {
               type: 'object',
@@ -287,13 +305,14 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
             type: 'function',
             function: {
               name: tool.name,
-              description: tool.name === 'getCurrentTime' 
-                ? '現在の時刻を取得します'
-                : tool.name === 'calculate'
-                ? '数式を計算します'
-                : tool.name === 'getWorkspaceInfo'
-                ? 'ワークスペースの情報を取得します'
-                : tool.description,
+              description:
+                tool.name === 'getCurrentTime'
+                  ? '現在の時刻を取得します'
+                  : tool.name === 'calculate'
+                    ? '数式を計算します'
+                    : tool.name === 'getWorkspaceInfo'
+                      ? 'ワークスペースの情報を取得します'
+                      : tool.description,
               parameters,
             },
           };
@@ -305,7 +324,7 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
 
         // リクエストを送信（ツール付き）
         console.log('Sending request with tools...');
-        
+
         // シンプルなタイムアウトPromise
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => {
@@ -314,12 +333,12 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
         });
 
         try {
-          const response = await Promise.race([
+          const response = (await Promise.race([
             model.sendRequest(messages, {
-              tools: chatTools as any, // 型の一時的な回避
+              tools: chatTools as never, // TODO: Remove when proper tool types are defined
             }),
-            timeoutPromise
-          ]) as any;
+            timeoutPromise,
+          ])) as LanguageModelChatResponse; // TODO: Remove when Promise.race return type is properly typed
 
           console.log('Request successful, processing response...');
           await appendToBuffer('✅ レスポンス受信開始\n\n');
@@ -330,10 +349,10 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
           let partCount = 0;
 
           console.log('Starting to iterate over response.stream...');
-          
+
           const startTime = Date.now();
           const streamTimeout = 20000; // 20 seconds
-          
+
           for await (const part of response.stream) {
             // Check for timeout
             if (Date.now() - startTime > streamTimeout) {
@@ -341,11 +360,15 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
               await appendToBuffer('\n⚠️ ストリーム処理がタイムアウトしました\n');
               break;
             }
-            
+
             partCount++;
-            console.log(`🔥 MAIN LOOP: Processing part ${partCount}:`, typeof part, part?.constructor?.name);
-            console.log(`🔥 MAIN LOOP: Part details:`, part);
-            
+            console.log(
+              `🔥 MAIN LOOP: Processing part ${partCount}:`,
+              typeof part,
+              part?.constructor?.name
+            );
+            console.log('🔥 MAIN LOOP: Part details:', part);
+
             if (part instanceof LanguageModelTextPart) {
               fullResponse += part.value;
               console.log('✅ MAIN LOOP: Text part received:', part.value);
@@ -353,8 +376,11 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
             } else if (part instanceof LanguageModelToolCallPart) {
               toolCalls.push(part);
               console.log('🛠️ MAIN LOOP: Tool call received:', part);
-              console.log(`🛠️ MAIN LOOP: Tool call details - name: ${part.name}, id: ${part.callId}, input:`, part.input);
-              
+              console.log(
+                `🛠️ MAIN LOOP: Tool call details - name: ${part.name}, id: ${part.callId}, input:`,
+                part.input
+              );
+
               await appendToBuffer(`\n\n### 🛠️ ツール呼び出し: ${part.name}\n`);
               await appendToBuffer(`引数: ${JSON.stringify(part.input, null, 2)}\n`);
 
@@ -381,26 +407,25 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
             }
           }
 
-          console.log(`Stream processing completed. Parts processed: ${partCount}, Response length: ${fullResponse.length}, Tool calls: ${toolCalls.length}`);
+          console.log(
+            `Stream processing completed. Parts processed: ${partCount}, Response length: ${fullResponse.length}, Tool calls: ${toolCalls.length}`
+          );
 
-          await appendToBuffer(`\n\n## 処理完了\n`);
+          await appendToBuffer('\n\n## 処理完了\n');
           await appendToBuffer(`- 処理したパート数: ${partCount}\n`);
           await appendToBuffer(`- レスポンス長: ${fullResponse.length} 文字\n`);
           await appendToBuffer(`- ツール呼び出し数: ${toolCalls.length}\n`);
-
         } catch (requestError) {
           console.error('Request failed:', requestError);
           await appendToBuffer(`\n❌ リクエストエラー: ${requestError}\n`);
-          
+
           // ツールなしでフォールバック
           await appendToBuffer('\n🔄 ツールなしでリトライ中...\n');
           console.log('Falling back to request without tools...');
           try {
             const fallbackResponse = await model.sendRequest(messages, {});
             await appendToBuffer('\n### フォールバック応答\n');
-            let fallbackText = '';
             for await (const textChunk of fallbackResponse.text) {
-              fallbackText += textChunk;
               await appendToBuffer(textChunk);
             }
             await appendToBuffer('\n\n✅ フォールバック完了\n');

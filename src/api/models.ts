@@ -1,6 +1,7 @@
 // Model-related types and model management
 
 import { Emitter } from 'coc.nvim';
+import { z } from 'zod';
 import {
   type ApiToken,
   extractOauthTokenFromConfig,
@@ -13,48 +14,64 @@ import { LanguageModelError } from './types';
 
 const DEFAULT_MODEL_ID = 'gpt-4.1';
 
-// Internal API types for GitHub Copilot communication
-export enum ModelVendor {
-  OpenAI = 'OpenAI',
-  Google = 'Google',
-  Anthropic = 'Anthropic',
-}
+// Zod schemas for GitHub Copilot API - these are the source of truth
+const ModelLimitsSchema = z.object({
+  max_context_window_tokens: z.number().default(0),
+  max_output_tokens: z.number().default(0),
+  max_prompt_tokens: z.number().default(0),
+});
 
-export interface ModelCapabilities {
-  family: string;
-  limits: ModelLimits;
-  supports: ModelSupportedFeatures;
-}
+const ModelSupportedFeaturesSchema = z.object({
+  streaming: z.boolean().default(false),
+  tool_calls: z.boolean().default(false),
+  parallel_tool_calls: z.boolean().default(false),
+  vision: z.boolean().default(false),
+});
 
-export interface ModelLimits {
-  maxContextWindowTokens?: number;
-  maxOutputTokens?: number;
-  maxPromptTokens?: number;
-}
+const ModelCapabilitiesSchema = z.object({
+  family: z.string(),
+  limits: ModelLimitsSchema.default({}),
+  supports: ModelSupportedFeaturesSchema,
+});
 
-export interface ModelSupportedFeatures {
-  streaming: boolean;
-  toolCalls: boolean;
-  parallelToolCalls: boolean;
-  vision: boolean;
-}
+const ModelPolicySchema = z.object({
+  state: z.string(),
+});
 
-export interface ModelPolicy {
-  state: string;
-}
+const ModelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  vendor: z.string(),
+  capabilities: ModelCapabilitiesSchema,
+  model_picker_enabled: z.boolean(),
+  policy: ModelPolicySchema.optional(),
+});
 
-export interface Model {
-  capabilities: ModelCapabilities;
-  id: string;
-  name: string;
-  policy?: ModelPolicy;
-  vendor: ModelVendor;
-  model_picker_enabled: boolean;
-}
+// Custom transform function to handle errors and skip invalid models
+const ModelResponseSchema = z.object({
+  data: z.array(z.unknown()).transform((rawModels) => {
+    const validModels: Model[] = [];
 
-interface ModelSchema {
-  data: Model[];
-}
+    for (const rawModel of rawModels) {
+      const parseResult = ModelSchema.safeParse(rawModel);
+      if (parseResult.success) {
+        validModels.push(parseResult.data);
+      } else {
+        console.warn('GitHub Copilot Chat model failed to deserialize:', parseResult.error);
+      }
+    }
+
+    return validModels;
+  }),
+});
+
+// Export inferred types
+export type ModelLimits = z.infer<typeof ModelLimitsSchema>;
+export type ModelSupportedFeatures = z.infer<typeof ModelSupportedFeaturesSchema>;
+export type ModelCapabilities = z.infer<typeof ModelCapabilitiesSchema>;
+export type ModelPolicy = z.infer<typeof ModelPolicySchema>;
+export type Model = z.infer<typeof ModelSchema>;
+export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 
 export class LanguageModelManager {
   private config: CopilotChatConfig;
@@ -215,7 +232,17 @@ export class LanguageModelManager {
       }
 
       console.log('updateModels: Parsing response...');
-      const data = (await response.json()) as ModelSchema;
+      const rawData = await response.json();
+      const parseResult = ModelResponseSchema.safeParse(rawData);
+
+      if (!parseResult.success) {
+        console.error('updateModels: Invalid model schema:', parseResult.error);
+        throw LanguageModelError.NoPermissions(
+          `Invalid model response format: ${parseResult.error.message}`
+        );
+      }
+
+      const data = parseResult.data;
       console.log('updateModels: Raw response data:', data);
 
       // Filter and sort models

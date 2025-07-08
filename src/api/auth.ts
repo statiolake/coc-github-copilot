@@ -2,17 +2,23 @@
 
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { z } from 'zod';
 import { LanguageModelError } from './types';
 
-export interface ApiTokenResponse {
-  token: string;
-  expiresAt: number;
-  endpoints: ApiTokenResponseEndpoints;
-}
+// Zod schemas for GitHub Copilot API - these are the source of truth
+const ApiTokenResponseEndpointsSchema = z.object({
+  api: z.string(),
+});
 
-export interface ApiTokenResponseEndpoints {
-  api: string;
-}
+const ApiTokenResponseSchema = z.object({
+  token: z.string(),
+  expires_at: z.number(),
+  endpoints: ApiTokenResponseEndpointsSchema,
+});
+
+// Export inferred types
+export type ApiTokenResponseEndpoints = z.infer<typeof ApiTokenResponseEndpointsSchema>;
+export type ApiTokenResponse = z.infer<typeof ApiTokenResponseSchema>;
 
 export interface ApiToken {
   apiKey: string;
@@ -110,10 +116,23 @@ export async function requestApiToken(oauthToken: string, authUrl: string): Prom
     throw LanguageModelError.NoPermissions(`Failed to request API token: ${errorBody}`);
   }
 
-  const data = (await response.json()) as ApiTokenResponse;
+  const rawData = await response.json();
+  console.log('API token response raw data:', JSON.stringify(rawData, null, 2));
+
+  const parseResult = ApiTokenResponseSchema.safeParse(rawData);
+
+  if (!parseResult.success) {
+    console.error('API token schema validation failed:', parseResult.error);
+    throw LanguageModelError.NoPermissions(
+      `Invalid API token response format: ${JSON.stringify(parseResult.error.issues, null, 2)}`
+    );
+  }
+
+  const data = parseResult.data;
+
   return {
     apiKey: data.token,
-    expiresAt: new Date(data.expiresAt * 1000),
+    expiresAt: new Date(data.expires_at * 1000),
     apiEndpoint: data.endpoints.api,
   };
 }

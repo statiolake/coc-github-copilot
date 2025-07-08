@@ -1,6 +1,6 @@
 // Tool management for Language Model API
 
-import { Emitter } from 'coc.nvim';
+import { CancellationTokenSource, Emitter } from 'coc.nvim';
 import type {
   CancellationToken,
   Disposable,
@@ -51,7 +51,7 @@ export class LanguageModelToolManager {
       throw new Error('Tool invocation was cancelled');
     }
 
-    return tool.invoke(options, token!);
+    return tool.invoke(options, token ?? new CancellationTokenSource().token);
   }
 
   dispose(): void {
