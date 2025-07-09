@@ -169,6 +169,100 @@ export class SelfOperatingAgent {
     }
   }
 
+  // Conversation history storage
+  private conversationHistory = new Map<string, LanguageModelChatMessage[]>();
+
+  /**
+   * Send a message directly to AI for interactive chat with conversation history
+   */
+  async sendDirectMessage(
+    message: string,
+    invocationToken: LanguageModelToolInvocationToken,
+    conversationId?: string,
+    token?: CancellationToken,
+    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>
+  ): Promise<LanguageModelToolResult> {
+    const context = this.createExecutionContext(invocationToken, token);
+    this.activeContexts.set(context.requestId, context);
+
+    try {
+      this.log(`Sending direct message: ${message}`, context);
+
+      // Get or create conversation history
+      const sessionId = conversationId || context.requestId;
+      const existingMessages = this.conversationHistory.get(sessionId) || [];
+
+      // Add user message to history
+      const newUserMessage = LanguageModelChatMessage.User(message);
+      const messages = [...existingMessages, newUserMessage];
+
+      // Send message to AI with available tools
+      const response = await this.sendMessageToAI(messages, context);
+
+      // Process AI response
+      const { hasToolCalls, toolResults, textContent } = await this.processAIResponse(
+        response,
+        context,
+        onToolUse
+      );
+
+      let finalContent = textContent || '';
+      const assistantMessage = textContent || '';
+
+      if (hasToolCalls) {
+        // AI used tools - continue the conversation with tool results
+        const toolResultsText = toolResults
+          .map((result) =>
+            result.content
+              .filter((c): c is LanguageModelTextPart => c instanceof LanguageModelTextPart)
+              .map((c) => c.value)
+              .join('\n')
+          )
+          .join('\n');
+
+        // Add assistant message and tool results to conversation
+        messages.push(LanguageModelChatMessage.Assistant(assistantMessage));
+        messages.push(LanguageModelChatMessage.User(`Tool results: ${toolResultsText}`));
+
+        // Get AI's final response after tool usage
+        const finalResponse = await this.sendMessageToAI(messages, context);
+        const finalResult = await this.processAIResponse(finalResponse, context, onToolUse);
+
+        finalContent = finalResult.textContent || assistantMessage;
+        // ツール結果は既にリアルタイムで表示されているので、ここでは追加しない
+      }
+
+      // Update conversation history
+      const updatedMessages = [...messages];
+      if (!hasToolCalls) {
+        updatedMessages.push(LanguageModelChatMessage.Assistant(finalContent));
+      } else {
+        // Add final assistant response
+        const finalAssistantMessage = LanguageModelChatMessage.Assistant(finalContent);
+        updatedMessages.push(finalAssistantMessage);
+      }
+
+      this.conversationHistory.set(sessionId, updatedMessages);
+
+      this.log('Direct message completed', context);
+      return {
+        content: [new LanguageModelTextPart(finalContent)],
+      };
+    } catch (error) {
+      this.log(`Direct message failed: ${error}`, context);
+      throw error;
+    } finally {
+      this.activeContexts.delete(context.requestId);
+    }
+  }
+
+  /**
+   * Clear conversation history for a session
+   */
+  clearConversationHistory(conversationId: string): void {
+    this.conversationHistory.delete(conversationId);
+  }
+
   private createExecutionContext(
     invocationToken: LanguageModelToolInvocationToken,
     token?: CancellationToken
@@ -187,7 +281,7 @@ export class SelfOperatingAgent {
 
   private async sendMessageToAI(
     messages: LanguageModelChatMessage[],
-    context: AgentExecutionContext
+    _context: AgentExecutionContext
   ): Promise<LanguageModelChatResponse> {
     // Get available tools in VS Code LM API format
     const availableTools = this.lmNamespace.tools.map((tool) => ({
@@ -249,7 +343,8 @@ export class SelfOperatingAgent {
 
   private async processAIResponse(
     response: LanguageModelChatResponse,
-    context: AgentExecutionContext
+    context: AgentExecutionContext,
+    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>
   ): Promise<{
     hasToolCalls: boolean;
     toolResults: LanguageModelToolResult[];
@@ -277,12 +372,40 @@ export class SelfOperatingAgent {
             },
           });
           toolResults.push(toolResult);
+
+          // Notify about tool use for real-time display
+          if (onToolUse) {
+            this.log(`Calling onToolUse callback for ${part.name}`, context);
+            try {
+              await onToolUse(part.name, part.input, toolResult);
+              this.log(`onToolUse callback completed for ${part.name}`, context);
+            } catch (callbackError) {
+              this.log(`onToolUse callback failed for ${part.name}: ${callbackError}`, context);
+            }
+          } else {
+            this.log('No onToolUse callback provided', context);
+          }
         } catch (error) {
           this.log(`Tool execution failed: ${error}`, context);
           // Add error as tool result
-          toolResults.push({
+          const errorResult = {
             content: [new LanguageModelTextPart(`Tool error: ${error}`)],
-          });
+          };
+          toolResults.push(errorResult);
+
+          // Notify about tool error for real-time display
+          if (onToolUse) {
+            this.log(`Calling onToolUse callback for error ${part.name}`, context);
+            try {
+              await onToolUse(part.name, part.input, errorResult);
+              this.log(`onToolUse error callback completed for ${part.name}`, context);
+            } catch (callbackError) {
+              this.log(
+                `onToolUse error callback failed for ${part.name}: ${callbackError}`,
+                context
+              );
+            }
+          }
         }
       }
     }

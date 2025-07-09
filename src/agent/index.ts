@@ -8,6 +8,7 @@ import type {
   Event,
   LanguageModelChat,
   LanguageModelToolInvocationOptions,
+  LanguageModelToolInvocationToken,
   LanguageModelToolResult,
   LMNamespace,
 } from '../api/types';
@@ -69,6 +70,50 @@ export class AgentService {
     } catch (error) {
       this.setStatus(AgentStatus.Error);
       throw error;
+    }
+  }
+
+  /**
+   * Send a message directly to the agent for interactive chat
+   */
+  async sendDirectMessage(
+    message: string,
+    invocationToken: LanguageModelToolInvocationToken,
+    conversationId?: string,
+    token?: CancellationToken,
+    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>
+  ): Promise<LanguageModelToolResult> {
+    if (!this.agent) {
+      throw new Error('Agent not initialized. Call initialize() first.');
+    }
+
+    if (this.status !== AgentStatus.Ready) {
+      throw new Error(`Agent is not ready. Current status: ${this.status}`);
+    }
+
+    try {
+      this.setStatus(AgentStatus.Executing);
+      const result = await this.agent.sendDirectMessage(
+        message,
+        invocationToken,
+        conversationId,
+        token,
+        onToolUse
+      );
+      this.setStatus(AgentStatus.Ready);
+      return result;
+    } catch (error) {
+      this.setStatus(AgentStatus.Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Clear conversation history for a session
+   */
+  clearConversationHistory(conversationId: string): void {
+    if (this.agent) {
+      this.agent.clearConversationHistory(conversationId);
     }
   }
 
