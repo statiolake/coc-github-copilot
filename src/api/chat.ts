@@ -103,7 +103,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
   constructor(model: Model, config: CopilotChatConfig, getApiToken: () => Promise<ApiToken>) {
     this.id = model.id;
-    this.vendor = model.vendor;
+    this.vendor = 'copilot'; // All models from this extension are copilot vendor
     this.family = model.capabilities.family;
     this.name = model.name;
     this.version = '1.0'; // Default version
@@ -160,6 +160,16 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
       const chatMessages = messages.map((msg) => this.convertToChatMessage(msg));
 
+      // Convert tools to GitHub Copilot API format
+      const copilotTools = (options.tools || []).map((tool) => ({
+        type: 'function',
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.inputSchema || { type: 'object', properties: {} },
+        },
+      }));
+
       const request: CompletionRequest = {
         intent: true,
         n: 1,
@@ -167,8 +177,8 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
         temperature: 0.1,
         model: this.id,
         messages: chatMessages,
-        tools: options.tools || [],
-        tool_choice: options.tools && options.tools.length > 0 ? 'auto' : undefined,
+        tools: copilotTools,
+        tool_choice: copilotTools.length > 0 ? 'auto' : undefined,
       };
 
       console.log('Chat request details:', JSON.stringify(request, null, 2));

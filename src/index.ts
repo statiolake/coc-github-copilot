@@ -1,5 +1,6 @@
 // Main extension entry point - exports LM namespace directly for coc.nvim extensions
 import { commands, type ExtensionContext, window, workspace } from 'coc.nvim';
+import { createAgentService } from './agent';
 import { createLMNamespace } from './api';
 import type { LanguageModelChat, LanguageModelChatResponse, LMNamespace } from './api/types';
 import {
@@ -13,7 +14,168 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
   // Initialize suggestion functionality (language server, auth, commands)
   await initializeSuggestionFeatures(context);
 
+  // Create LM namespace (VS Code compatible)
   const lm = createLMNamespace();
+
+  // Create separate agent service for autonomous capabilities
+  const agentService = createAgentService({
+    maxIterations: 5,
+    maxDepth: 2,
+    autoExecute: true,
+    timeout: 60000,
+    enableLogging: true,
+  });
+
+  // Monitor agent status changes
+  context.subscriptions.push(
+    agentService.onDidChangeAgentStatus((status) => {
+      console.log(`Agent status changed: ${status}`);
+    })
+  );
+
+  // 起動時に自動でテストツールを登録
+  async function setupTestTools() {
+    try {
+      console.log('=== Auto-registering Test Tools on Startup ===');
+
+      // ツール1: 現在時刻を取得
+      const timeToolDisposable = lm.registerTool('getCurrentTime', {
+        invoke: async (options, _token) => {
+          console.log('getCurrentTime tool invoked with:', options.input);
+          const now = new Date();
+          return {
+            content: [new LanguageModelTextPart(`現在時刻: ${now.toLocaleString('ja-JP')}`)],
+          };
+        },
+      });
+
+      // ツール2: 簡単な計算
+      const calcToolDisposable = lm.registerTool('calculate', {
+        invoke: async (options, _token) => {
+          console.log('calculate tool invoked with:', options.input);
+
+          // 型ガードを使用した安全な型チェック
+          const isValidInput = (input: unknown): input is { expression: string } => {
+            if (typeof input !== 'object' || input === null || !('expression' in input)) {
+              return false;
+            }
+            const inputObj = input as Record<string, unknown>;
+            return typeof inputObj.expression === 'string';
+          };
+
+          if (!isValidInput(options.input)) {
+            return {
+              content: [new LanguageModelTextPart('計算エラー: 不正な入力形式です')],
+            };
+          }
+
+          const input = options.input;
+          try {
+            // 安全な計算のため、Function constructorを使用（evalより安全）
+            const sanitized = input.expression.replace(/[^0-9+\-*/(). ]/g, '');
+            if (sanitized !== input.expression) {
+              return {
+                content: [new LanguageModelTextPart('計算エラー: 不正な文字が含まれています')],
+              };
+            }
+            const result = Function(`"use strict"; return (${sanitized})`)();
+            return {
+              content: [new LanguageModelTextPart(`計算結果: ${input.expression} = ${result}`)],
+            };
+          } catch (error) {
+            return {
+              content: [new LanguageModelTextPart(`計算エラー: ${error}`)],
+            };
+          }
+        },
+      });
+
+      // ツール3: ファイルシステム情報
+      const fsInfoToolDisposable = lm.registerTool('getWorkspaceInfo', {
+        invoke: async (options, _token) => {
+          console.log('getWorkspaceInfo tool invoked with:', options.input);
+          const fs = require('node:fs');
+          const _path = require('node:path');
+
+          try {
+            const currentDir = process.cwd();
+            const files = fs.readdirSync(currentDir).slice(0, 10); // 最初の10ファイルのみ
+            return {
+              content: [
+                new LanguageModelTextPart(
+                  `現在のディレクトリ: ${currentDir}\nファイル一覧: ${files.join(', ')}`
+                ),
+              ],
+            };
+          } catch (error) {
+            return {
+              content: [new LanguageModelTextPart(`ファイルシステムエラー: ${error}`)],
+            };
+          }
+        },
+      });
+
+      // ツール4: 追加のテストツール（エラーを発生させて、エージェントのフォローアップをテスト）
+      const errorToolDisposable = lm.registerTool('testError', {
+        invoke: async (options, _token) => {
+          console.log('testError tool invoked with:', options.input);
+          return {
+            content: [
+              new LanguageModelTextPart(
+                'エラーが発生しました。時刻を確認してからリトライしてください。'
+              ),
+            ],
+          };
+        },
+      });
+
+      // ツールのdisposableを適切に管理
+      context.subscriptions.push(
+        timeToolDisposable,
+        calcToolDisposable,
+        fsInfoToolDisposable,
+        errorToolDisposable
+      );
+
+      console.log('Auto-registered tools:', lm.tools);
+      console.log(`Successfully registered ${lm.tools.length} test tools on startup`);
+    } catch (error) {
+      console.error('Auto tool registration error:', error);
+    }
+  }
+
+  // 起動時に自動でエージェントを初期化
+  async function setupAgent() {
+    try {
+      console.log('=== Auto-initializing Self-Operating Agent on Startup ===');
+
+      // Get a model for the agent
+      const models = await lm.selectChatModels({ vendor: 'copilot' });
+      if (models.length === 0) {
+        console.log('No models available for agent initialization on startup');
+        return;
+      }
+
+      const model = models[0];
+      await agentService.initialize(lm, model);
+
+      if (agentService.isReady()) {
+        console.log('Agent successfully initialized on startup');
+        const config = agentService.getConfig();
+        console.log('Agent configuration:', config);
+      } else {
+        console.log('Agent initialization failed on startup');
+      }
+    } catch (error) {
+      console.error('Auto agent initialization error:', error);
+    }
+  }
+
+  // 起動時のセットアップを非同期で実行
+  setTimeout(async () => {
+    await setupTestTools();
+    await setupAgent();
+  }, 1000); // 1秒後に実行（拡張機能の初期化が完了してから）
 
   // チャットリクエストを実行する関数
   async function performChatRequest(model: LanguageModelChat) {
@@ -78,7 +240,7 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
 
       if (models.length === 0) {
         console.log('No models found, trying without vendor filter...');
-        const allModels = await lm.selectChatModels({});
+        const allModels = await lm.selectChatModels({ vendor: 'copilot' });
         console.log(
           'All available models:',
           allModels.length,
@@ -209,19 +371,120 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
           },
         });
 
+        // ツール4: 追加のテストツール（エラーを発生させて、エージェントのフォローアップをテスト）
+        const errorToolDisposable = lm.registerTool('testError', {
+          invoke: async (options, _token) => {
+            console.log('testError tool invoked with:', options.input);
+            return {
+              content: [
+                new LanguageModelTextPart(
+                  'エラーが発生しました。時刻を確認してからリトライしてください。'
+                ),
+              ],
+            };
+          },
+        });
+
         console.log('Registered tools:', lm.tools);
         window.showInformationMessage(
           `GitHub Copilot: ${lm.tools.length}個のテストツールを登録しました`
         );
 
         // ツールのdisposableを適切に管理
-        context.subscriptions.push(timeToolDisposable, calcToolDisposable, fsInfoToolDisposable);
+        context.subscriptions.push(
+          timeToolDisposable,
+          calcToolDisposable,
+          fsInfoToolDisposable,
+          errorToolDisposable
+        );
       } catch (error) {
         console.error('Tool registration error:', error);
         window.showErrorMessage(`ツール登録エラー: ${error}`);
       }
     }
   );
+
+  // 自律的なエージェントを初期化するコマンド
+  const initializeAgentCommand = commands.registerCommand('copilot.initializeAgent', async () => {
+    try {
+      console.log('=== Initializing Self-Operating Agent ===');
+      window.showInformationMessage('GitHub Copilot: 自律的なエージェントを初期化しています...');
+
+      // Get a model for the agent
+      const models = await lm.selectChatModels({ vendor: 'copilot' });
+      if (models.length === 0) {
+        throw new Error('No models available for agent initialization');
+      }
+
+      const model = models[0];
+      await agentService.initialize(lm, model);
+
+      if (agentService.isReady()) {
+        window.showInformationMessage('GitHub Copilot: エージェントの初期化が完了しました');
+        const config = agentService.getConfig();
+        console.log('Agent configuration:', config);
+      } else {
+        throw new Error('Agent initialization failed');
+      }
+    } catch (error) {
+      console.error('Agent initialization error:', error);
+      window.showErrorMessage(`エージェント初期化エラー: ${error}`);
+    }
+  });
+
+  // 自律的なエージェントをテストするコマンド
+  const testAgentCommand = commands.registerCommand('copilot.testAgent', async () => {
+    try {
+      console.log('=== Testing Self-Operating Agent ===');
+      window.showInformationMessage('GitHub Copilot: 自律的なエージェントをテストしています...');
+
+      if (!agentService.isReady()) {
+        throw new Error('Agent is not ready. Please initialize it first.');
+      }
+
+      // 新しいバッファを作成
+      const { nvim } = workspace;
+      await nvim.command('enew');
+      await nvim.command('setfiletype markdown');
+      await nvim.setLine('=== Self-Operating Agent Test ===');
+      await nvim.call('append', [0, '']);
+
+      // バッファに追記する関数
+      const appendToBuffer = async (text: string) => {
+        const lines = text.split('\n');
+        const currentLineCount = await nvim.call('line', ['$']);
+        await nvim.call('append', [currentLineCount, lines]);
+      };
+
+      await appendToBuffer('エージェントテスト開始...\n');
+      await appendToBuffer(`エージェントステータス: ${agentService.getStatus()}\n`);
+
+      // エラーツールを呼び出してエージェントの自律的な動作をテスト
+      const result = await agentService.executeWithAgent('testError', {
+        input: { message: 'テストメッセージ' },
+        toolInvocationToken: {
+          requestId: 'agent-test-request',
+          participantName: 'copilot',
+          command: 'testAgent',
+        },
+      });
+
+      await appendToBuffer('\n## エージェントの実行結果\n');
+      const resultText = result.content
+        .filter((c): c is LanguageModelTextPart => c instanceof LanguageModelTextPart)
+        .map((c) => c.value)
+        .join('\n');
+
+      await appendToBuffer(resultText);
+      await appendToBuffer(`\n最終ステータス: ${agentService.getStatus()}\n`);
+      await appendToBuffer('\n✅ エージェントテスト完了\n');
+
+      window.showInformationMessage('GitHub Copilot: エージェントテストが完了しました');
+    } catch (error) {
+      console.error('Agent test error:', error);
+      window.showErrorMessage(`エージェントテストエラー: ${error}`);
+    }
+  });
 
   // ツールを使ったチャットテストコマンド
   const testChatWithToolsCommand = commands.registerCommand(
@@ -248,7 +511,7 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
         await appendToBuffer('モデルを選択中...\n');
 
         // 利用可能なモデルを選択
-        const models = await lm.selectChatModels({});
+        const models = await lm.selectChatModels({ vendor: 'copilot' });
         if (models.length === 0) {
           await appendToBuffer('❌ エラー: 利用可能なモデルがありません\n');
           window.showErrorMessage('GitHub Copilot: 利用可能なモデルがありません');
@@ -441,7 +704,14 @@ export async function activate(context: ExtensionContext): Promise<LMNamespace> 
     }
   );
 
-  context.subscriptions.push(testChatCommand, registerTestToolsCommand, testChatWithToolsCommand);
+  context.subscriptions.push(
+    testChatCommand,
+    registerTestToolsCommand,
+    testChatWithToolsCommand,
+    initializeAgentCommand,
+    testAgentCommand,
+    agentService // Add agent service to disposables
+  );
 
   // Create and return the LM namespace directly
   // This matches the lm.d.ts interface where the namespace is returned "as is"

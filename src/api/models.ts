@@ -133,27 +133,17 @@ export class LanguageModelManager {
         `Filtering model: ${model.id} (vendor: ${model.vendor}, family: ${model.capabilities.family})`
       );
 
-      // Vendor filtering - map VS Code vendors to GitHub Copilot vendors
+      // Vendor filtering - this extension only supports 'copilot' vendor
       if (selector?.vendor) {
-        const vendorMapping: Record<string, string> = {
-          copilot: 'OpenAI',
-          openai: 'OpenAI',
-          anthropic: 'Anthropic',
-          google: 'Google',
-        };
-        const mappedVendor = vendorMapping[selector.vendor.toLowerCase()];
+        if (selector.vendor.toLowerCase() !== 'copilot') {
+          console.log(`Model ${model.id} filtered out - only 'copilot' vendor is supported`);
+          return false;
+        }
+        // All models from GitHub Copilot API are considered 'copilot' vendor
+        // The actual model.vendor field contains the underlying provider (OpenAI, Anthropic, etc.)
         console.log(
-          `Vendor filter: requested=${selector.vendor}, mapped=${mappedVendor}, model=${model.vendor}`
+          `Model ${model.id} accepted as copilot vendor (underlying provider: ${model.vendor})`
         );
-
-        if (mappedVendor && model.vendor !== mappedVendor) {
-          console.log(`Model ${model.id} filtered out by vendor mapping`);
-          return false;
-        }
-        if (!mappedVendor && model.vendor !== selector.vendor) {
-          console.log(`Model ${model.id} filtered out by direct vendor match`);
-          return false;
-        }
       }
 
       // Family filtering - exact match or partial match
