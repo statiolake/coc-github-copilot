@@ -28,6 +28,7 @@ export class LanguageModelToolManager {
   registerTool<T>(name: string, tool: LanguageModelTool<T>): Disposable {
     this.registeredTools.set(name, tool);
     this._onDidChangeTools.fire();
+    console.log(`Tool registered: ${name}`);
 
     return {
       dispose: () => {

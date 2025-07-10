@@ -142,6 +142,17 @@ export interface LanguageModelToolResult {
   readonly content: Array<LanguageModelTextPart | LanguageModelToolResultPart>;
 }
 
+// Combined interface for tool definition (info + implementation)
+export interface ToolInfo<T = object> extends LanguageModelToolInformation, LanguageModelTool<T> {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema?: object;
+  invoke(
+    options: LanguageModelToolInvocationOptions<T>,
+    token: CancellationToken
+  ): Thenable<LanguageModelToolResult>;
+}
+
 // Message part classes - simple data classes
 export class LanguageModelTextPart {
   value: string;

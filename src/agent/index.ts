@@ -1,7 +1,7 @@
 // Self-operating agent service - Independent from LM namespace for compatibility
 // This service can be used as a separate extension feature
 
-import { Emitter } from 'coc.nvim';
+import { Emitter, type ExtensionContext, window } from 'coc.nvim';
 import type {
   CancellationToken,
   Event,
@@ -12,6 +12,8 @@ import type {
   LMNamespace,
 } from '../api/types';
 import { type AgentConfig, SelfOperatingAgent } from './agent';
+import { registerChatCommands } from './chat';
+import { registerAgentTools } from './tools';
 
 export class AgentService {
   private _onDidChangeAgentStatus = new Emitter<AgentStatus>();
@@ -184,4 +186,66 @@ export enum AgentStatus {
 // Factory function to create agent service
 export function createAgentService(config: Partial<AgentConfig> = {}): AgentService {
   return new AgentService(config);
+}
+
+/**
+ * Initialize agent functionality including tools, commands, and auto-startup
+ */
+export async function initializeAgent(
+  context: ExtensionContext,
+  lm: LMNamespace
+): Promise<AgentService> {
+  // Register agent tools with LM namespace
+  async function setupAgentTools() {
+    try {
+      await registerAgentTools(lm);
+    } catch (error) {
+      console.error('Setup agent tools error:', error);
+      window.showErrorMessage(`エージェントツールセットアップエラー: ${error}`);
+    }
+  }
+
+  // Create agent service
+  const agentService = createAgentService();
+
+  // 起動時に自動でエージェントを初期化
+  async function setupAgent() {
+    try {
+      console.log('=== Auto-initializing Self-Operating Agent on Startup ===');
+
+      // Get a model for the agent
+      const models = await lm.selectChatModels({ vendor: 'copilot' });
+      if (models.length === 0) {
+        console.log('No models available for agent initialization on startup');
+        return;
+      }
+
+      const model = models[0];
+      await agentService.initialize(lm, model);
+
+      if (agentService.isReady()) {
+        console.log('Agent successfully initialized on startup');
+        const config = agentService.getConfig();
+        console.log('Agent configuration:', config);
+      } else {
+        console.log('Agent initialization failed on startup');
+      }
+    } catch (error) {
+      console.error('Auto agent initialization error:', error);
+    }
+  }
+
+  // Register chat commands
+  registerChatCommands(context, agentService, lm);
+
+  // Add agent service to disposables
+  context.subscriptions.push(agentService);
+
+  // 起動時のセットアップを非同期で実行
+  setTimeout(async () => {
+    await setupAgentTools();
+    await setupAgent();
+  }, 1000); // 1秒後に実行（拡張機能の初期化が完了してから）
+
+  return agentService;
 }

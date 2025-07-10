@@ -283,62 +283,9 @@ export class SelfOperatingAgent {
     messages: LanguageModelChatMessage[],
     _context: AgentExecutionContext
   ): Promise<LanguageModelChatResponse> {
-    // Get available tools in VS Code LM API format
-    const availableTools = this.lmNamespace.tools.map((tool) => ({
-      name: tool.name,
-      description: this.getToolDescription(tool.name),
-      inputSchema: this.getToolParameters(tool.name),
-    }));
-
-    // Send message to AI with tools
-    const response = await this.model.sendRequest(messages, {
-      tools: availableTools,
+    return await this.model.sendRequest(messages, {
+      tools: this.lmNamespace.tools.slice(),
     });
-
-    return response;
-  }
-
-  private getToolDescription(toolName: string): string {
-    switch (toolName) {
-      case 'getCurrentTime':
-        return 'Get the current time in Japanese format';
-      case 'calculate':
-        return 'Perform mathematical calculations';
-      case 'getWorkspaceInfo':
-        return 'Get information about the current workspace';
-      case 'testError':
-        return 'A test tool that simulates an error requiring time check';
-      default:
-        return `Tool: ${toolName}`;
-    }
-  }
-
-  private getToolParameters(toolName: string): object {
-    switch (toolName) {
-      case 'calculate':
-        return {
-          type: 'object',
-          properties: {
-            expression: {
-              type: 'string',
-              description: 'Mathematical expression to calculate (e.g., "2 + 3 * 4")',
-            },
-          },
-          required: ['expression'],
-        };
-      case 'getCurrentTime':
-      case 'getWorkspaceInfo':
-      case 'testError':
-        return {
-          type: 'object',
-          properties: {},
-        };
-      default:
-        return {
-          type: 'object',
-          properties: {},
-        };
-    }
   }
 
   private async processAIResponse(

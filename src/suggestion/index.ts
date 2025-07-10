@@ -219,7 +219,7 @@ export function registerCommands(context: ExtensionContext, authManager: Copilot
 }
 
 // Main suggestion functionality initialization
-export async function initializeSuggestionFeatures(context: ExtensionContext): Promise<{
+export async function initializeSuggestion(context: ExtensionContext): Promise<{
   authManager: CopilotAuthManager;
   client: LanguageClient;
 }> {
