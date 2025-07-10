@@ -8,9 +8,9 @@ import { getWorkspaceInfo } from './builtin_tools/getWorkspaceInfo';
  */
 export async function registerAgentTools(lm: LMNamespace): Promise<void> {
   try {
-    lm.registerTool(getCurrentTime.name, getCurrentTime);
-    lm.registerTool(calculate.name, calculate);
-    lm.registerTool(getWorkspaceInfo.name, getWorkspaceInfo);
+    lm.registerTool(getCurrentTime.information.name, getCurrentTime);
+    lm.registerTool(calculate.information.name, calculate);
+    lm.registerTool(getWorkspaceInfo.information.name, getWorkspaceInfo);
   } catch (error) {
     throw new Error(`Failed to register agent tools: ${error}`);
   }

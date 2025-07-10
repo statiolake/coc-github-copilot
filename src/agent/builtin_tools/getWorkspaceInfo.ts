@@ -1,14 +1,16 @@
 // Workspace information tool - provides current directory and file info
 import { workspace } from 'coc.nvim';
-import type { LanguageModelTool, LanguageModelToolInformation } from '../../api/types';
+import type { LanguageModelTool } from '../../api/types';
 import { LanguageModelTextPart } from '../../api/types';
 
-export const getWorkspaceInfo: LanguageModelToolInformation & LanguageModelTool<object> = {
-  name: 'getWorkspaceInfo',
-  description: 'Get information about the current workspace',
-  inputSchema: {
-    type: 'object',
-    properties: {},
+export const getWorkspaceInfo: LanguageModelTool<object> = {
+  information: {
+    name: 'getWorkspaceInfo',
+    description: 'Get information about the current workspace',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
   },
   invoke: async () => {
     const { nvim } = workspace;

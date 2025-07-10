@@ -1,23 +1,25 @@
 // Mathematical calculation tool - evaluates expressions safely
-import type { LanguageModelTool, LanguageModelToolInformation } from '../../api/types';
+import type { LanguageModelTool } from '../../api/types';
 import { LanguageModelTextPart } from '../../api/types';
 
 interface CalculateInput {
   expression: string;
 }
 
-export const calculate: LanguageModelToolInformation & LanguageModelTool<CalculateInput> = {
-  name: 'calculate',
-  description: 'Perform mathematical calculations',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      expression: {
-        type: 'string',
-        description: 'Mathematical expression to calculate (e.g., "2 + 3 * 4")',
+export const calculate: LanguageModelTool<CalculateInput> = {
+  information: {
+    name: 'calculate',
+    description: 'Perform mathematical calculations',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        expression: {
+          type: 'string',
+          description: 'Mathematical expression to calculate (e.g., "2 + 3 * 4")',
+        },
       },
+      required: ['expression'],
     },
-    required: ['expression'],
   },
   invoke: async (options: { input: CalculateInput }) => {
     try {

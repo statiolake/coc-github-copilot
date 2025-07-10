@@ -113,6 +113,12 @@ export interface LanguageModelToolInformation {
 }
 
 export interface LanguageModelTool<T> {
+  // This member is not available in the VS Code LM API: in VS Code, tool
+  // information is provided by the extension contributes (package.json).
+  // coc.nvim does not have it, so we define it here. However this breaks
+  // compatibility with VS Code LM API.
+  information: LanguageModelToolInformation;
+
   invoke(
     options: LanguageModelToolInvocationOptions<T>,
     token: CancellationToken
@@ -133,9 +139,6 @@ export interface LanguageModelToolInvocationToken {
 export interface LanguageModelToolResult {
   readonly content: Array<LanguageModelTextPart | LanguageModelToolResultPart>;
 }
-
-// Combines tool metadata and implementation for convenience in agent tooling
-export interface ToolInfo<T = object> extends LanguageModelToolInformation, LanguageModelTool<T> {}
 
 export class LanguageModelTextPart {
   value: string;

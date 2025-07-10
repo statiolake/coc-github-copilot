@@ -27,12 +27,11 @@ export class LanguageModelToolManager {
   }
 
   registerTool<T>(name: string, tool: LanguageModelTool<T>): Disposable {
-    // Extract tool information from tool object if it implements ToolInfo interface
-    const toolWithInfo = tool as LanguageModelTool<T> & Partial<LanguageModelToolInformation>;
+    // Use tool.information directly - no casting needed
     const info: LanguageModelToolInformation = {
-      name: toolWithInfo.name || name,
-      description: toolWithInfo.description || `Tool: ${name}`,
-      inputSchema: toolWithInfo.inputSchema,
+      name: tool.information.name,
+      description: tool.information.description,
+      inputSchema: tool.information.inputSchema,
     };
 
     this.registeredTools.set(name, { tool, info });
@@ -48,7 +47,7 @@ export class LanguageModelToolManager {
 
   async invokeTool(
     name: string,
-    options: LanguageModelToolInvocationOptions<object>,
+    options: LanguageModelToolInvocationOptions<unknown>,
     token?: CancellationToken
   ): Promise<LanguageModelToolResult> {
     const registeredTool = this.registeredTools.get(name);
