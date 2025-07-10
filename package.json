@@ -50,16 +50,8 @@
         "title": "Disable GitHub Copilot"
       },
       {
-        "command": "copilot.testChat",
-        "title": "Test GitHub Copilot Chat (Rust FizzBuzz)"
-      },
-      {
-        "command": "copilot.registerTestTools",
-        "title": "Register Test Tools for GitHub Copilot"
-      },
-      {
-        "command": "copilot.testChatWithTools",
-        "title": "Test GitHub Copilot Chat with Tools"
+        "command": "copilot.chat",
+        "title": "Open GitHub Copilot Chat"
       }
     ]
   },

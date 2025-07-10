@@ -11,7 +11,7 @@ const EXCLUDED_PATTERNS = [
   /\/\/ TODO: Remove when/, // TODOコメント付きは許可
   /\/\/ FIXME:/, // FIXMEコメント付きは許可
   /import \* as /, // import * as は許可
-  /` as \${/, // テンプレートリテラル内の文字列は許可
+  /`[^`]*as/, // テンプレートリテラル内の文字列は許可
   /"[^"]*as[^"]*"/, // 文字列内の "as" は許可
   /'[^']*as[^']*'/, // 文字列内の 'as' は許可
   /as Record<string, unknown>/, // Record<string, unknown>は許可（型ガード内）

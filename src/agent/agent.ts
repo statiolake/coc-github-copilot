@@ -10,12 +10,12 @@ import type {
   LanguageModelToolInvocationToken,
   LanguageModelToolResult,
   LMNamespace,
-} from './types';
+} from '../api/types';
 import {
   LanguageModelChatMessage,
   LanguageModelTextPart,
   LanguageModelToolCallPart,
-} from './types';
+} from '../api/types';
 
 // Configuration schema for agent behavior
 const AgentConfigSchema = z.object({

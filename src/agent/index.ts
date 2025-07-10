@@ -2,7 +2,6 @@
 // This service can be used as a separate extension feature
 
 import { Emitter } from 'coc.nvim';
-import { type AgentConfig, SelfOperatingAgent } from '../api/agent';
 import type {
   CancellationToken,
   Event,
@@ -12,6 +11,7 @@ import type {
   LanguageModelToolResult,
   LMNamespace,
 } from '../api/types';
+import { type AgentConfig, SelfOperatingAgent } from './agent';
 
 export class AgentService {
   private _onDidChangeAgentStatus = new Emitter<AgentStatus>();
