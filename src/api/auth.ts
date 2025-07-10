@@ -117,12 +117,9 @@ export async function requestApiToken(oauthToken: string, authUrl: string): Prom
   }
 
   const rawData = await response.json();
-  console.log('API token response raw data:', JSON.stringify(rawData, null, 2));
-
   const parseResult = ApiTokenResponseSchema.safeParse(rawData);
 
   if (!parseResult.success) {
-    console.error('API token schema validation failed:', parseResult.error);
     throw LanguageModelError.NoPermissions(
       `Invalid API token response format: ${JSON.stringify(parseResult.error.issues, null, 2)}`
     );

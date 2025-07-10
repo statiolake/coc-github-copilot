@@ -126,7 +126,7 @@ export class AgentService {
     this.config = { ...this.config, ...newConfig };
     // If agent is initialized, we might need to reinitialize it
     if (this.agent) {
-      console.log('Agent configuration updated. Re-initialization may be required.');
+      // Re-initialization may be required for config changes
     }
   }
 
@@ -200,7 +200,6 @@ export async function initializeAgent(
     try {
       await registerAgentTools(lm);
     } catch (error) {
-      console.error('Setup agent tools error:', error);
       window.showErrorMessage(`エージェントツールセットアップエラー: ${error}`);
     }
   }
@@ -211,27 +210,16 @@ export async function initializeAgent(
   // 起動時に自動でエージェントを初期化
   async function setupAgent() {
     try {
-      console.log('=== Auto-initializing Self-Operating Agent on Startup ===');
-
       // Get a model for the agent
       const models = await lm.selectChatModels({ vendor: 'copilot' });
       if (models.length === 0) {
-        console.log('No models available for agent initialization on startup');
         return;
       }
 
       const model = models[0];
       await agentService.initialize(lm, model);
-
-      if (agentService.isReady()) {
-        console.log('Agent successfully initialized on startup');
-        const config = agentService.getConfig();
-        console.log('Agent configuration:', config);
-      } else {
-        console.log('Agent initialization failed on startup');
-      }
-    } catch (error) {
-      console.error('Auto agent initialization error:', error);
+    } catch (_error) {
+      // Agent initialization failed - will retry on first use
     }
   }
 

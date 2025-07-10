@@ -76,14 +76,14 @@ export class SelfOperatingAgent {
     this.activeContexts.set(context.requestId, context);
 
     try {
-      this.log(`Starting autonomous execution for tool: ${toolName}`, context);
+      // Starting autonomous execution for tool
 
       // Execute initial tool
       const initialResult = await this.executeTool(toolName, options, context);
 
       // If autoExecute is disabled, return the initial result
       if (!this.config.autoExecute) {
-        this.log('Auto-execute disabled, returning initial result', context);
+        // Auto-execute disabled, returning initial result
         return initialResult;
       }
 
@@ -101,7 +101,7 @@ export class SelfOperatingAgent {
       let finalResult = initialResult;
 
       while (context.iteration < this.config.maxIterations && !token?.isCancellationRequested) {
-        this.log(`Iteration ${context.iteration}: Sending message to AI`, context);
+        // Iteration ${context.iteration}: Sending message to AI
 
         // Send message to AI with available tools
         const response = await this.sendMessageToAI(messages, context);
@@ -114,7 +114,7 @@ export class SelfOperatingAgent {
 
         if (!hasToolCalls) {
           // AI returned only text - we're done
-          this.log('AI returned text only, finishing', context);
+          // AI returned text only, finishing
           if (textContent) {
             finalResult = {
               content: [
@@ -127,7 +127,7 @@ export class SelfOperatingAgent {
         }
 
         // AI used tools - add results to conversation and continue
-        this.log(`AI used ${toolResults.length} tools, continuing conversation`, context);
+        // AI used ${toolResults.length} tools, continuing conversation
 
         // Add tool results to conversation
         const toolResultsText = toolResults
@@ -154,16 +154,13 @@ export class SelfOperatingAgent {
 
         // Safety check for timeout
         if (Date.now() - context.startTime > this.config.timeout) {
-          this.log('Agent execution timeout reached', context);
+          // Agent execution timeout reached
           break;
         }
       }
 
-      this.log(`Autonomous execution completed after ${context.iteration} iterations`, context);
+      // Autonomous execution completed after ${context.iteration} iterations
       return finalResult;
-    } catch (error) {
-      this.log(`Agent execution failed: ${error}`, context);
-      throw error;
     } finally {
       this.activeContexts.delete(context.requestId);
     }
@@ -186,7 +183,7 @@ export class SelfOperatingAgent {
     this.activeContexts.set(context.requestId, context);
 
     try {
-      this.log(`Sending direct message: ${message}`, context);
+      // Sending direct message
 
       // Get or create conversation history
       const sessionId = conversationId || context.requestId;
@@ -244,13 +241,10 @@ export class SelfOperatingAgent {
 
       this.conversationHistory.set(sessionId, updatedMessages);
 
-      this.log('Direct message completed', context);
+      // Direct message completed
       return {
         content: [new LanguageModelTextPart(finalContent)],
       };
-    } catch (error) {
-      this.log(`Direct message failed: ${error}`, context);
-      throw error;
     } finally {
       this.activeContexts.delete(context.requestId);
     }
@@ -307,7 +301,7 @@ export class SelfOperatingAgent {
         textContent += part.value;
       } else if (part instanceof LanguageModelToolCallPart) {
         hasToolCalls = true;
-        this.log(`AI requested tool: ${part.name}`, context);
+        // AI requested tool: ${part.name}
 
         // Execute the tool
         try {
@@ -322,18 +316,14 @@ export class SelfOperatingAgent {
 
           // Notify about tool use for real-time display
           if (onToolUse) {
-            this.log(`Calling onToolUse callback for ${part.name}`, context);
             try {
               await onToolUse(part.name, part.input, toolResult);
-              this.log(`onToolUse callback completed for ${part.name}`, context);
-            } catch (callbackError) {
-              this.log(`onToolUse callback failed for ${part.name}: ${callbackError}`, context);
+            } catch (_callbackError) {
+              // Tool callback failed
             }
-          } else {
-            this.log('No onToolUse callback provided', context);
           }
         } catch (error) {
-          this.log(`Tool execution failed: ${error}`, context);
+          // Tool execution failed
           // Add error as tool result
           const errorResult = {
             content: [new LanguageModelTextPart(`Tool error: ${error}`)],
@@ -342,15 +332,10 @@ export class SelfOperatingAgent {
 
           // Notify about tool error for real-time display
           if (onToolUse) {
-            this.log(`Calling onToolUse callback for error ${part.name}`, context);
             try {
               await onToolUse(part.name, part.input, errorResult);
-              this.log(`onToolUse error callback completed for ${part.name}`, context);
-            } catch (callbackError) {
-              this.log(
-                `onToolUse error callback failed for ${part.name}: ${callbackError}`,
-                context
-              );
+            } catch (_callbackError) {
+              // Tool error callback failed
             }
           }
         }
@@ -374,21 +359,21 @@ export class SelfOperatingAgent {
     };
 
     try {
-      this.log(`Executing tool: ${toolName}`, context);
+      // Executing tool: ${toolName}
       const result = await this.lmNamespace.invokeTool(toolName, options, context.token);
 
       action.result = result;
       action.success = true;
       context.history.push(action);
 
-      this.log(`Tool ${toolName} executed successfully`, context);
+      // Tool ${toolName} executed successfully
       return result;
     } catch (error) {
       action.error = error instanceof Error ? error.message : String(error);
       action.success = false;
       context.history.push(action);
 
-      this.log(`Tool ${toolName} execution failed: ${action.error}`, context);
+      // Tool ${toolName} execution failed
       throw error;
     }
   }

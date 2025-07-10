@@ -66,7 +66,6 @@ export class CopilotAuthManager {
       const parseResult = SignInResultSchema.safeParse(rawResult);
 
       if (!parseResult.success) {
-        console.error('Invalid sign-in result:', parseResult.error);
         throw new Error(`Invalid sign-in response format: ${parseResult.error.message}`);
       }
 
@@ -132,8 +131,8 @@ export class CopilotAuthManager {
   private async copyToClipboard(text: string): Promise<void> {
     try {
       await workspace.nvim.call('setreg', ['+', text]);
-    } catch (error) {
-      console.warn('GitHub Copilot: Failed to copy to clipboard:', error);
+    } catch (_error) {
+      // Failed to copy to clipboard
     }
   }
 

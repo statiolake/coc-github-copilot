@@ -1,4 +1,4 @@
-// Language Model API Types - Fully compatible with VS Code lm namespace
+// Language Model API Types - Maintains compatibility with VS Code lm namespace for extension interoperability
 
 export type { CancellationToken, Disposable, Event } from 'coc.nvim';
 
@@ -6,7 +6,6 @@ import type { CancellationToken, Disposable, Event } from 'coc.nvim';
 
 interface Thenable<T> extends PromiseLike<T> {}
 
-// Main lm namespace interface - this is what gets exported
 export interface LMNamespace {
   readonly tools: readonly LanguageModelToolInformation[];
   readonly onDidChangeChatModels: Event<void>;
@@ -19,7 +18,6 @@ export interface LMNamespace {
   ): Thenable<LanguageModelToolResult>;
 }
 
-// Chat model selector
 export interface LanguageModelChatSelector {
   vendor?: string;
   family?: string;
@@ -27,7 +25,6 @@ export interface LanguageModelChatSelector {
   id?: string;
 }
 
-// Chat model interface
 export interface LanguageModelChat {
   readonly name: string;
   readonly id: string;
@@ -43,7 +40,7 @@ export interface LanguageModelChat {
   countTokens(text: string | LanguageModelChatMessage, token?: CancellationToken): Thenable<number>;
 }
 
-// Chat message class - matches VS Code API exactly
+// Uses class structure to match VS Code API expectations exactly
 export class LanguageModelChatMessage {
   role: LanguageModelChatMessageRole;
   content: Array<LanguageModelTextPart | LanguageModelToolResultPart | LanguageModelToolCallPart>;
@@ -81,13 +78,11 @@ export class LanguageModelChatMessage {
   }
 }
 
-// Chat message role enum
 export enum LanguageModelChatMessageRole {
   User = 1,
   Assistant = 2,
 }
 
-// Request options
 export interface LanguageModelChatRequestOptions {
   justification?: string;
   modelOptions?: { [name: string]: unknown };
@@ -95,13 +90,11 @@ export interface LanguageModelChatRequestOptions {
   toolMode?: LanguageModelChatToolMode;
 }
 
-// Response interface
 export interface LanguageModelChatResponse {
   stream: AsyncIterable<LanguageModelTextPart | LanguageModelToolCallPart | unknown>;
   text: AsyncIterable<string>;
 }
 
-// Tool interfaces
 export interface LanguageModelChatTool {
   name: string;
   description: string;
@@ -113,7 +106,6 @@ export enum LanguageModelChatToolMode {
   Required = 2,
 }
 
-// Tool registration interfaces
 export interface LanguageModelToolInformation {
   readonly name: string;
   readonly description: string;
@@ -142,18 +134,9 @@ export interface LanguageModelToolResult {
   readonly content: Array<LanguageModelTextPart | LanguageModelToolResultPart>;
 }
 
-// Combined interface for tool definition (info + implementation)
-export interface ToolInfo<T = object> extends LanguageModelToolInformation, LanguageModelTool<T> {
-  readonly name: string;
-  readonly description: string;
-  readonly inputSchema?: object;
-  invoke(
-    options: LanguageModelToolInvocationOptions<T>,
-    token: CancellationToken
-  ): Thenable<LanguageModelToolResult>;
-}
+// Combines tool metadata and implementation for convenience in agent tooling
+export interface ToolInfo<T = object> extends LanguageModelToolInformation, LanguageModelTool<T> {}
 
-// Message part classes - simple data classes
 export class LanguageModelTextPart {
   value: string;
 
@@ -184,7 +167,6 @@ export class LanguageModelToolCallPart {
   }
 }
 
-// Error class
 export class LanguageModelError extends Error {
   readonly code: string;
 

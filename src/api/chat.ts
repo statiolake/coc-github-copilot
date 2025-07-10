@@ -1,11 +1,10 @@
-// Chat implementation and streaming logic
+// GitHub Copilot chat implementation with streaming support
 
 import { z } from 'zod';
 
-// Native fetch Response type
 type FetchResponse = Response;
 
-// Node.js compatible TextDecoder
+// Node.js compatibility shim for TextDecoder
 const TextDecoder = globalThis.TextDecoder || require('node:util').TextDecoder;
 
 import type { ApiToken } from './auth';
@@ -20,7 +19,7 @@ import type {
 } from './types';
 import { LanguageModelError, LanguageModelTextPart, LanguageModelToolCallPart } from './types';
 
-// Zod schemas for GitHub Copilot API - these are the source of truth
+// Schema definitions for GitHub Copilot API validation
 const ToolCallFunctionSchema = z.object({
   name: z.string().optional(),
   arguments: z.string().optional(),
@@ -72,7 +71,6 @@ const CompletionRequestSchema = z.object({
   tool_choice: z.string().optional(),
 });
 
-// Export inferred types
 export type ToolCallFunction = z.infer<typeof ToolCallFunctionSchema>;
 export type ToolCall = z.infer<typeof ToolCallSchema>;
 export type ResponseDelta = z.infer<typeof ResponseDeltaSchema>;
@@ -81,7 +79,7 @@ export type ResponseChoice = z.infer<typeof ResponseChoiceSchema>;
 export type ResponseEvent = z.infer<typeof ResponseEventSchema>;
 export type CompletionRequest = z.infer<typeof CompletionRequestSchema>;
 
-// Tool call chunk accumulator for streaming
+// Accumulates tool call fragments during streaming
 interface ToolCallChunk {
   index: number;
   id?: string;
@@ -103,10 +101,10 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
   constructor(model: Model, config: CopilotChatConfig, getApiToken: () => Promise<ApiToken>) {
     this.id = model.id;
-    this.vendor = 'copilot'; // All models from this extension are copilot vendor
+    this.vendor = 'copilot';
     this.family = model.capabilities.family;
     this.name = model.name;
-    this.version = '1.0'; // Default version
+    this.version = '1.0';
     this.maxInputTokens = model.capabilities.limits.max_prompt_tokens ?? 128000;
     this.config = config;
     this.getApiToken = getApiToken;
@@ -117,14 +115,11 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
       return undefined;
     }
 
-    // 既にキャンセルされている場合は即座にabort
     if (token.isCancellationRequested) {
       return AbortSignal.abort();
     }
 
     const controller = new AbortController();
-
-    // キャンセルイベントを監視
     token.onCancellationRequested(() => {
       controller.abort();
     });
@@ -160,7 +155,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
       const chatMessages = messages.map((msg) => this.convertToChatMessage(msg));
 
-      // Convert tools to GitHub Copilot API format
       const copilotTools = (options.tools || []).map((tool) => ({
         type: 'function',
         function: {
@@ -181,8 +175,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
         tool_choice: copilotTools.length > 0 ? 'auto' : undefined,
       };
 
-      console.log('Chat request details:', JSON.stringify(request, null, 2));
-
       const headers: Record<string, string> = {
         Authorization: `Bearer ${apiToken.apiKey}`,
         'Content-Type': 'application/json',
@@ -199,12 +191,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
       if (!response.ok) {
         const errorBody = await response.text();
-        console.error('Chat API error response:', {
-          status: response.status,
-          statusText: response.statusText,
-          body: errorBody,
-          headers: response.headers,
-        });
 
         if (response.status === 401 || response.status === 403) {
           throw LanguageModelError.NoPermissions(`Authentication failed: ${errorBody}`);
@@ -233,7 +219,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
   }
 
   async countTokens(text: string | LanguageModelChatMessage): Promise<number> {
-    // Simple token counting estimation
     const content =
       typeof text === 'string'
         ? text
@@ -268,37 +253,26 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
     response: FetchResponse,
     token?: CancellationToken
   ): AsyncIterable<LanguageModelTextPart | LanguageModelToolCallPart | unknown> {
-    console.log('createStreamIterator: Starting stream processing');
-    console.log('createStreamIterator: Response body available:', !!response.body);
-
     if (!response.body) {
-      console.log('createStreamIterator: No response body, returning');
       return;
     }
 
-    // Use ReadableStream approach similar to Zed's BufReader.lines()
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let lineCount = 0;
 
-    // Tool call chunk accumulator for this stream
     const toolCallChunks = new Map<number, ToolCallChunk>();
-
-    console.log('createStreamIterator: Starting line-by-line processing...');
 
     try {
       while (true) {
         if (token?.isCancellationRequested) {
-          console.log('createStreamIterator: Cancellation requested, returning');
           return;
         }
 
         const { done, value } = await reader.read();
 
         if (done) {
-          console.log('createStreamIterator: Stream done, processing final buffer');
-          // Process any remaining buffer content
           if (buffer.trim()) {
             await this.processLine(buffer.trim(), lineCount++, toolCallChunks);
           }
@@ -307,16 +281,14 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Process complete lines
         const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        buffer = lines.pop() || '';
 
         for (const line of lines) {
           if (token?.isCancellationRequested) return;
 
           const result = await this.processLine(line, lineCount++, toolCallChunks);
           if (result === 'DONE') {
-            console.log('createStreamIterator: Received [DONE], returning');
             return;
           }
           if (result) {
@@ -325,85 +297,59 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
         }
       }
     } finally {
-      console.log(`createStreamIterator: Finally block - processed ${lineCount} lines`);
       reader.releaseLock();
     }
-
-    console.log('createStreamIterator: Stream processing complete');
   }
 
   private async processLine(
     line: string,
-    lineNum: number,
+    _lineNum: number,
     toolCallChunks: Map<number, ToolCallChunk>
   ): Promise<LanguageModelTextPart | LanguageModelToolCallPart | 'DONE' | null> {
     const trimmed = line.trim();
     if (!trimmed) return null;
 
-    console.log(`Line ${lineNum}: "${trimmed}"`);
-
-    // Check for data prefix (following Zed's approach)
     const dataPrefix = 'data: ';
     if (!trimmed.startsWith(dataPrefix)) {
-      console.log(`Line ${lineNum}: Not a data line, skipping`);
       return null;
     }
 
     const data = trimmed.slice(dataPrefix.length);
-    console.log(`Line ${lineNum}: Data content: "${data}"`);
 
-    // Check for done marker (following Zed's approach)
     if (data.startsWith('[DONE]')) {
-      console.log(`Line ${lineNum}: Found [DONE] marker`);
       return 'DONE';
     }
 
     try {
-      // Parse and validate JSON using Zod schema
       const rawData = JSON.parse(data);
       const parseResult = ResponseEventSchema.safeParse(rawData);
 
       if (!parseResult.success) {
-        console.log(`Line ${lineNum}: Zod validation failed:`, parseResult.error);
-        console.log(`Line ${lineNum}: Raw data was:`, rawData);
         return null;
       }
 
       const event: ResponseEvent = parseResult.data;
-      console.log(`Line ${lineNum}: Parsed and validated event:`, JSON.stringify(event, null, 2));
 
-      // Following Zed: filter out events with empty choices
       if (!event.choices || event.choices.length === 0) {
-        console.log(`Line ${lineNum}: Empty choices, skipping`);
         return null;
       }
 
       const choice = event.choices[0];
-      console.log(`Line ${lineNum}: Processing choice:`, JSON.stringify(choice, null, 2));
 
-      // Process text content
       const content = choice.delta?.content || choice.message?.content;
       if (content) {
-        console.log(`Line ${lineNum}: Yielding text content: "${content}"`);
         return new LanguageModelTextPart(content);
       }
 
-      // Process tool calls (note: GitHub Copilot API uses snake_case)
       const toolCalls = choice.delta?.tool_calls || choice.message?.tool_calls;
       if (toolCalls && toolCalls.length > 0) {
-        console.log(`Line ${lineNum}: Found ${toolCalls.length} tool calls`);
-
-        // Process all tool calls and accumulate chunks
         const completedToolCalls: LanguageModelToolCallPart[] = [];
 
         for (const toolCall of toolCalls) {
-          console.log(`Line ${lineNum}: Processing tool call:`, toolCall);
-
           const index = toolCall.index ?? 0;
           let chunk = toolCallChunks.get(index);
 
           if (!chunk) {
-            // Create new chunk
             chunk = {
               index,
               arguments: '',
@@ -411,7 +357,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
             toolCallChunks.set(index, chunk);
           }
 
-          // Update chunk with new information
           if (toolCall.id) {
             chunk.id = toolCall.id;
           }
@@ -425,46 +370,25 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
             chunk.arguments += toolCall.function.arguments;
           }
 
-          console.log(`Line ${lineNum}: Updated chunk for index ${index}:`, chunk);
-
-          // Check if we have a complete tool call
           if (chunk.id && chunk.name && this.isCompleteJSON(chunk.arguments)) {
-            console.log(`Line ${lineNum}: Tool call complete for index ${index}`);
-
             try {
               const args = chunk.arguments ? JSON.parse(chunk.arguments) : {};
-              console.log(
-                `Line ${lineNum}: ✅ YIELDING TOOL CALL - id: ${chunk.id}, name: ${chunk.name}, args:`,
-                args
-              );
-
               const toolCallPart = new LanguageModelToolCallPart(chunk.id, chunk.name, args);
               completedToolCalls.push(toolCallPart);
-
-              // Remove completed chunk
               toolCallChunks.delete(index);
-            } catch (parseError) {
-              console.log(
-                `Line ${lineNum}: Failed to parse tool call arguments:`,
-                parseError,
-                'arguments were:',
-                chunk.arguments
-              );
-              // Don't yield incomplete tool calls
+            } catch (_parseError) {
+              // Ignore incomplete tool calls
             }
           }
         }
 
-        // Return the first completed tool call (if any)
         if (completedToolCalls.length > 0) {
-          console.log(`Line ${lineNum}: Returning completed tool call:`, completedToolCalls[0]);
           return completedToolCalls[0];
         }
       }
 
       return null;
-    } catch (jsonError) {
-      console.log(`Line ${lineNum}: Failed to parse JSON:`, jsonError, 'Data was:', data);
+    } catch (_jsonError) {
       return null;
     }
   }

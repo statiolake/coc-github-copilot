@@ -12,7 +12,7 @@ export function registerChatCommands(
   // チャットコマンド
   const chatCommand = commands.registerCommand('copilot.chat', async () => {
     try {
-      console.log('=== Starting GitHub Copilot Chat ===');
+      // Starting GitHub Copilot Chat
 
       if (!agentService.isReady()) {
         throw new Error('Agent is not ready. Please initialize it first.');
@@ -35,7 +35,7 @@ export function registerChatCommands(
 
       // 初期のユーザー入力エリアにextmarkを設置
       const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
-      const initialMarkId = await nvim.call('nvim_buf_set_extmark', [
+      const _initialMarkId = await nvim.call('nvim_buf_set_extmark', [
         bufnr,
         namespace,
         2, // 0-based indexing (3行目)
@@ -50,7 +50,7 @@ export function registerChatCommands(
         },
       ]);
 
-      console.log(`🔥 [chat] Created initial extmark ${initialMarkId} at line 3`);
+      // Created initial extmark for chat input
 
       // キーマッピングを設定
       await nvim.command(
@@ -79,24 +79,24 @@ export function registerChatCommands(
     'copilot.sendMessage',
     async (bufnr: number) => {
       try {
-        console.log(`🔥 [sendMessage] Command started with bufnr: ${bufnr}`);
+        // Send message command started
 
         if (!agentService.isReady()) {
-          console.log(`🔥 [sendMessage] Agent not ready, status: ${agentService.getStatus()}`);
+          // Agent not ready
           window.showErrorMessage('Agent is not ready');
           return;
         }
 
-        console.log('🔥 [sendMessage] Agent is ready, proceeding...');
+        // Agent is ready
 
         const { nvim } = workspace;
 
         // 現在のバッファが対象バッファかチェック
         const currentBufnr = await nvim.call('bufnr', ['%']);
-        console.log(`🔥 [sendMessage] Current buffer: ${currentBufnr}, target buffer: ${bufnr}`);
+        // Current buffer check
 
         if (currentBufnr !== bufnr) {
-          console.log('🔥 [sendMessage] Buffer mismatch, exiting');
+          // Buffer mismatch, exiting
           return;
         }
 
@@ -111,7 +111,7 @@ export function registerChatCommands(
           -1,
           {},
         ]);
-        console.log(`🔥 [sendMessage] Found ${existingMarks.length} existing extmarks`);
+        // Found existing extmarks
 
         let userInputStartLine = 4; // デフォルトは4行目から（virt_lineの下の行）
 
@@ -120,20 +120,16 @@ export function registerChatCommands(
           const lastMark = existingMarks[existingMarks.length - 1];
           // virt_linesの下の行から入力開始
           userInputStartLine = lastMark[1] + 2; // extmarkの行+2（virt_linesの下）から
-          console.log(`🔥 [sendMessage] Using extmark position, start line: ${userInputStartLine}`);
+          // Using extmark position
         } else {
-          console.log(
-            `🔥 [sendMessage] No extmarks found, using default start line: ${userInputStartLine}`
-          );
+          // No extmarks found, using default
         }
 
         const lastLine = await nvim.call('line', ['$']);
-        console.log(
-          `🔥 [sendMessage] User input start line: ${userInputStartLine}, last line: ${lastLine}`
-        );
+        // User input area determined
 
         if (lastLine < userInputStartLine) {
-          console.log('🔥 [sendMessage] No message found, exiting');
+          // No message found, exiting
           return; // メッセージがない
         }
 
@@ -145,10 +141,10 @@ export function registerChatCommands(
         }
 
         const userMessage = messageLines.join('\n').trim();
-        console.log(`🔥 [sendMessage] User message: "${userMessage}"`);
+        // User message extracted
 
         if (!userMessage) {
-          console.log('🔥 [sendMessage] Empty user message, exiting');
+          // Empty user message, exiting
           return;
         }
 
@@ -183,9 +179,7 @@ export function registerChatCommands(
           result: LanguageModelToolResult
         ) => {
           try {
-            console.log(`🔥 [UI] onToolUse callback triggered! toolName: ${toolName}`);
-            console.log('🔥 [UI] input:', input);
-            console.log('🔥 [UI] result:', result);
+            // Tool use callback triggered
 
             const toolResultText = result.content
               .filter((c): c is LanguageModelTextPart => c instanceof LanguageModelTextPart)
@@ -194,38 +188,37 @@ export function registerChatCommands(
 
             const limitedOutput = limitToolOutput(toolResultText);
 
-            console.log(`🔥 [UI] Tool result text: ${limitedOutput}`);
+            // Tool result processed
 
             // バッファが有効かチェック
             const currentBufnr = await nvim.call('bufnr', ['%']);
-            console.log(`🔥 [UI] Current buffer: ${currentBufnr}, target buffer: ${bufnr}`);
+            // Buffer verification
 
             if (currentBufnr !== bufnr) {
-              console.log(`🔥 [UI] Switching to buffer ${bufnr} from ${currentBufnr}`);
+              // Switching to target buffer
               // 正しいバッファに切り替え
               await nvim.command(`buffer ${bufnr}`);
             }
 
-            console.log('🔥 [UI] About to append tool display to buffer...');
+            // Appending tool display to buffer
             await appendToBuffer(`🔧 **${toolName}** ${JSON.stringify(input)}`);
             await appendToBuffer('```');
             await appendToBuffer(limitedOutput);
             await appendToBuffer('```');
             await appendToBuffer('');
 
-            console.log(`🔥 [UI] Tool display updated for ${toolName} - SUCCESS!`);
+            // Tool display updated successfully
 
             // バッファを再描画
             await nvim.command('redraw');
-            console.log('🔥 [UI] Buffer redrawn');
-          } catch (error) {
-            console.error('🔥 [UI] Tool display error:', error);
+            // Buffer redrawn
+          } catch (_error) {
+            // Tool display error
           }
         };
 
         // ユーザーメッセージを直接AIに送信
-        console.log(`🔥 [UI] Sending message to agent: "${userMessage}"`);
-        console.log('🔥 [UI] onToolUse callback function defined:', typeof onToolUse);
+        // Sending message to agent
 
         const result = await agentService.sendDirectMessage(
           userMessage,
@@ -239,7 +232,7 @@ export function registerChatCommands(
           onToolUse
         );
 
-        console.log('🔥 [UI] Agent response received:', result);
+        // Agent response received
 
         // エージェントの応答を表示
         const resultText = result.content
@@ -253,7 +246,7 @@ export function registerChatCommands(
 
         // 新しいユーザー入力エリアのextmarkを設置
         const newPromptLine = await nvim.call('line', ['$']);
-        const markId = await nvim.call('nvim_buf_set_extmark', [
+        const _markId = await nvim.call('nvim_buf_set_extmark', [
           bufnr,
           namespace,
           newPromptLine - 1, // 0-based indexing
@@ -268,7 +261,7 @@ export function registerChatCommands(
           },
         ]);
 
-        console.log(`🔥 [sendMessage] Created new extmark ${markId} at line ${newPromptLine}`);
+        // Created new extmark for next input
 
         // ユーザー入力用の空行を追加
         await appendToBuffer('');
@@ -278,11 +271,7 @@ export function registerChatCommands(
         await nvim.call('cursor', [finalLine, 1]);
         await nvim.command('startinsert');
       } catch (error) {
-        console.error('🔥 [sendMessage] Error occurred:', error);
-        console.error(
-          '🔥 [sendMessage] Error stack:',
-          error instanceof Error ? error.stack : 'No stack'
-        );
+        // Send message error occurred
         window.showErrorMessage(`メッセージ送信エラー: ${error}`);
       }
     }
@@ -312,7 +301,7 @@ export function registerChatCommands(
         const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
         await nvim.call('nvim_buf_clear_namespace', [bufnr, namespace, 0, -1]);
 
-        const initialMarkId = await nvim.call('nvim_buf_set_extmark', [
+        const _initialMarkId = await nvim.call('nvim_buf_set_extmark', [
           bufnr,
           namespace,
           2, // 0-based indexing (3行目)
@@ -327,7 +316,7 @@ export function registerChatCommands(
           },
         ]);
 
-        console.log(`🔥 [clearHistory] Reset extmark ${initialMarkId} at line 3`);
+        // Reset extmark for chat input
 
         // 会話履歴をクリア
         const conversationId = `buffer-${bufnr}`;
