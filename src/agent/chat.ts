@@ -2,51 +2,98 @@
 import { commands, type ExtensionContext, window, workspace } from 'coc.nvim';
 import type { LanguageModelToolResult, LMNamespace } from '../api/types';
 import { LanguageModelTextPart } from '../api/types';
+import { ChatRenderer } from './chat-renderer';
+import { ChatState } from './chat-state';
 import type { AgentService } from './index';
 
 // Sidebar state management
 let sidebarBufnr: number | null = null;
 let sidebarWinId: number | null = null;
 
+// Chat state management
+const chatStates = new Map<string, ChatState>();
+const chatRenderers = new Map<number, ChatRenderer>();
+
+/**
+ * Extract user input from the buffer based on virtual text --- markers
+ */
+async function getUserInput(bufnr: number): Promise<string | null> {
+  const { nvim } = workspace;
+  const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
+
+  try {
+    // Get all extmarks with virtual text
+    const extmarks = await nvim.call('nvim_buf_get_extmarks', [
+      bufnr,
+      namespace,
+      0,
+      -1,
+      { details: true },
+    ]);
+
+    // Find the last You: marker (extmark with virtual text containing dashes)
+    let lastYouMarkerLine = -1;
+    for (let i = extmarks.length - 1; i >= 0; i--) {
+      const extmark = extmarks[i];
+      const [_id, line, _col, details] = extmark;
+      if (details?.virt_text?.[0]?.[0]?.includes('---')) {
+        lastYouMarkerLine = line;
+        break;
+      }
+    }
+
+    if (lastYouMarkerLine === -1) {
+      return null;
+    }
+
+    const lines = await nvim.call('getbufline', [bufnr, 1, '$']);
+    const inputStart = lastYouMarkerLine + 2; // Line after You: marker (1-based)
+
+    if (inputStart > lines.length) {
+      return null;
+    }
+
+    const inputLines = lines.slice(inputStart - 1); // Convert to 0-based for slice
+    const userMessage = inputLines.join('\n').trim();
+
+    return userMessage || null;
+  } catch (error) {
+    console.error('getUserInput error:', error);
+    return null;
+  }
+}
+
 /**
  * Create and setup a chat buffer with proper configuration
  */
 async function createChatBuffer(
   title = '# Copilot Chat'
-): Promise<{ bufnr: number; namespace: number }> {
+): Promise<{ bufnr: number; namespace: number; chatState: ChatState; renderer: ChatRenderer }> {
   const { nvim } = workspace;
 
   // Create new buffer
-  const _bufnr = await nvim.call('bufnr', ['%']);
   await nvim.command('enew');
   await nvim.command('setfiletype markdown');
 
-  // Clear buffer and set structure
-  await nvim.command('normal! ggdG');
-  await nvim.setLine(title);
-  await nvim.call('append', [1, '']);
-  await nvim.call('append', [2, '']); // Reserve line 3 for user input
-
   const newBufnr = await nvim.call('bufnr', ['%']);
-
-  // Create namespace and initial extmark
   const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
-  const _initialMarkId = await nvim.call('nvim_buf_set_extmark', [
-    newBufnr,
-    namespace,
-    1, // 0-based indexing (line 2)
-    0,
-    {
-      virt_lines: [[['You:', 'Title']]],
-      virt_lines_above: false,
-      right_gravity: false,
-      undo_restore: true,
-      invalidate: false,
-      priority: 1000,
-    },
-  ]);
 
-  return { bufnr: newBufnr, namespace };
+  // Create chat state and renderer
+  const conversationId = `buffer-${newBufnr}`;
+  const chatState = new ChatState(conversationId);
+  const renderer = new ChatRenderer(newBufnr, namespace);
+
+  // Add initial empty user message for input
+  chatState.addEmptyUserMessage();
+
+  // Render initial state
+  await renderer.render(chatState, title);
+
+  // Store references
+  chatStates.set(conversationId, chatState);
+  chatRenderers.set(newBufnr, renderer);
+
+  return { bufnr: newBufnr, namespace, chatState, renderer };
 }
 
 /**
@@ -102,7 +149,7 @@ async function openSidebar(agentService: AgentService): Promise<void> {
   // Move cursor to input area (find the last line for continued input)
   const lastLine = await nvim.call('line', ['$']);
   await nvim.call('cursor', [lastLine, 1]);
-  await nvim.command('startinsert');
+  // 自動挿入モードを無効化 - ユーザーが手動で入力モードに入る
 
   window.showInformationMessage('GitHub Copilot: サイドバーチャットが開始されました。');
 }
@@ -187,96 +234,48 @@ export function registerChatCommands(
     'copilot.sendMessage',
     async (bufnr: number) => {
       try {
-        // Send message command started
-
         if (!agentService.isReady()) {
-          // Agent not ready
           window.showErrorMessage('Agent is not ready');
           return;
         }
-
-        // Agent is ready
 
         const { nvim } = workspace;
 
         // 現在のバッファが対象バッファかチェック
         const currentBufnr = await nvim.call('bufnr', ['%']);
-        // Current buffer check
-
         if (currentBufnr !== bufnr) {
-          // Buffer mismatch, exiting
           return;
         }
 
-        // extmarkを使ってユーザー入力エリアを特定
-        const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
-
-        // 既存のextmarkを検索（ユーザー入力マーカー）
-        const existingMarks = await nvim.call('nvim_buf_get_extmarks', [
-          bufnr,
-          namespace,
-          0,
-          -1,
-          {},
-        ]);
-        // Found existing extmarks
-
-        let userInputStartLine = 3; // デフォルトは3行目から（virt_lineの下の行）
-
-        if (existingMarks.length > 0) {
-          // 最後のextmark（最新のユーザー入力位置）を取得
-          const lastMark = existingMarks[existingMarks.length - 1];
-          // virt_linesの下の行から入力開始
-          userInputStartLine = lastMark[1] + 2; // extmarkの行+2（virt_linesの下）から
-          // Using extmark position
-        } else {
-          // No extmarks found, using default
-        }
-
-        const lastLine = await nvim.call('line', ['$']);
-        // User input area determined
-
-        if (lastLine < userInputStartLine) {
-          // No message found, exiting
-          return; // メッセージがない
-        }
-
-        // ユーザーメッセージを取得（extmarkの次の行以降）
-        const messageLines = [];
-        for (let i = userInputStartLine; i <= lastLine; i++) {
-          const line = await nvim.call('getline', [i]);
-          messageLines.push(line);
-        }
-
-        const userMessage = messageLines.join('\n').trim();
-        // User message extracted
-
-        if (!userMessage) {
-          // Empty user message, exiting
-          return;
-        }
-
-        // バッファに追記する関数
-        const appendToBuffer = async (text: string) => {
-          const lines = text.split('\n');
-          const lastLine = await nvim.call('line', ['$']);
-          await nvim.call('append', [lastLine, lines]);
-        };
-
-        // ツール出力を制限する関数（最大5行）
-        const limitToolOutput = (text: string, maxLines = 5): string => {
-          const lines = text.split('\n');
-          if (lines.length <= maxLines) {
-            return text;
-          }
-          return `${lines.slice(0, maxLines).join('\n')}\n... (${lines.length - maxLines} more lines)`;
-        };
-
-        // ユーザーメッセージを確定（区切り線なし）
-        // No separator needed
-
-        // 会話IDとしてバッファ番号を使用
+        // Get chat state and renderer
         const conversationId = `buffer-${bufnr}`;
+        const chatState = chatStates.get(conversationId);
+        const renderer = chatRenderers.get(bufnr);
+
+        if (!(chatState && renderer)) {
+          window.showErrorMessage('Chat session not found');
+          return;
+        }
+
+        // Get user input from buffer
+        const userMessage = await getUserInput(bufnr);
+        if (!userMessage) {
+          return;
+        }
+
+        // Update the last (empty) user message with actual content
+        chatState.updateLastUserMessage(userMessage);
+        await renderer.render(chatState);
+
+        // カーソル追従のためのヘルパー関数
+        const shouldFollowCursor = async (): Promise<boolean> => {
+          const currentLine = await nvim.call('line', ['.']);
+          const lastLine = await nvim.call('line', ['$']);
+          return currentLine >= lastLine - 1;
+        };
+
+        // Assistant message started flag
+        let assistantMessageStarted = false;
 
         // ツール使用のリアルタイム表示コールバック
         const onToolUse = async (
@@ -285,47 +284,51 @@ export function registerChatCommands(
           result: LanguageModelToolResult
         ) => {
           try {
-            // Tool use callback triggered
-
             const toolResultText = result.content
               .filter((c): c is LanguageModelTextPart => c instanceof LanguageModelTextPart)
               .map((c: LanguageModelTextPart) => c.value)
               .join('\n');
 
-            const limitedOutput = limitToolOutput(toolResultText);
+            // Add tool component to chat state
+            chatState.addToolComponent(toolName, input, toolResultText);
 
-            // Tool result processed
+            // After tool use, prepare for next assistant message
+            assistantMessageStarted = false;
 
-            // バッファが有効かチェック
-            const currentBufnr = await nvim.call('bufnr', ['%']);
-            // Buffer verification
+            await renderer.render(chatState);
 
-            if (currentBufnr !== bufnr) {
-              // Switching to target buffer
-              // 正しいバッファに切り替え
-              await nvim.command(`buffer ${bufnr}`);
+            // カーソル追従
+            if (await shouldFollowCursor()) {
+              await renderer.moveCursorIfFollowing();
             }
-
-            // Appending tool display to buffer
-            await appendToBuffer(`🔧 **${toolName}** ${JSON.stringify(input)}`);
-            await appendToBuffer('```');
-            await appendToBuffer(limitedOutput);
-            await appendToBuffer('```');
-            await appendToBuffer('');
-
-            // Tool display updated successfully
-
-            // バッファを再描画
-            await nvim.command('redraw');
-            // Buffer redrawn
           } catch (_error) {
             // Tool display error
           }
         };
 
-        // ユーザーメッセージを直接AIに送信
-        // Sending message to agent
+        // テキストストリーミングコールバック
+        const onTextStream = async (textPart: string) => {
+          try {
+            // Start assistant message on first text part
+            if (!assistantMessageStarted) {
+              chatState.startAssistantMessage();
+              assistantMessageStarted = true;
+            }
 
+            // Append text to last assistant message
+            chatState.appendToLastAssistantMessage(textPart);
+            await renderer.render(chatState);
+
+            // カーソル追従
+            if (await shouldFollowCursor()) {
+              await renderer.moveCursorIfFollowing();
+            }
+          } catch (_error) {
+            // ストリーミング表示エラー
+          }
+        };
+
+        // ユーザーメッセージを直接AIに送信
         const result = await agentService.sendDirectMessage(
           userMessage,
           {
@@ -335,66 +338,29 @@ export function registerChatCommands(
           },
           conversationId,
           undefined,
-          onToolUse
+          onToolUse,
+          onTextStream
         );
 
-        // Agent response received
+        // Ensure final content is set correctly only if assistant message was started
+        if (assistantMessageStarted) {
+          const finalContent = result.content
+            .filter((c): c is LanguageModelTextPart => c instanceof LanguageModelTextPart)
+            .map((c: LanguageModelTextPart) => c.value)
+            .join('\n');
 
-        // エージェントの応答を表示
-        const resultText = result.content
-          .filter((c): c is LanguageModelTextPart => c instanceof LanguageModelTextPart)
-          .map((c) => c.value)
-          .join('\n');
+          chatState.updateLastAssistantMessage(finalContent);
+          await renderer.render(chatState);
+        }
 
-        // エージェントの応答にvirtual textを追加
-        const agentResponseLine = await nvim.call('line', ['$']);
-        const _agentMarkId = await nvim.call('nvim_buf_set_extmark', [
-          bufnr,
-          namespace,
-          agentResponseLine, // 0-based indexing
-          0,
-          {
-            virt_lines: [[['Agent:', 'Title']]],
-            virt_lines_above: false,
-            right_gravity: false,
-            undo_restore: true,
-            invalidate: false,
-            priority: 1000,
-          },
-        ]);
+        // Add new empty user message for next input
+        chatState.addEmptyUserMessage();
+        await renderer.render(chatState);
 
-        await appendToBuffer(''); // エージェント応答用の空行
-        await appendToBuffer(resultText);
-        await appendToBuffer(''); // 次のユーザー入力用の空行
-
-        // 新しいユーザー入力エリアのextmarkを設置
-        const newPromptLine = await nvim.call('line', ['$']);
-        const _markId = await nvim.call('nvim_buf_set_extmark', [
-          bufnr,
-          namespace,
-          newPromptLine - 1, // 0-based indexing
-          0,
-          {
-            virt_lines: [[['You:', 'Title']]],
-            virt_lines_above: false,
-            right_gravity: false,
-            undo_restore: true,
-            invalidate: false,
-            priority: 1000,
-          },
-        ]);
-
-        // Created new extmark for next input
-
-        // ユーザー入力用の空行を追加
-        await appendToBuffer('');
-
-        // カーソルを新しい入力エリアに移動（virt_lineの下の行）
+        // カーソルを新しい入力エリアに移動
         const finalLine = await nvim.call('line', ['$']);
         await nvim.call('cursor', [finalLine, 1]);
-        await nvim.command('startinsert');
       } catch (error) {
-        // Send message error occurred
         window.showErrorMessage(`メッセージ送信エラー: ${error}`);
       }
     }
@@ -413,40 +379,29 @@ export function registerChatCommands(
           return;
         }
 
-        // バッファをクリアして初期状態に戻す
-        await nvim.command('normal! ggdG');
-        await nvim.setLine('# Copilot Chat');
-        await nvim.call('append', [1, '']);
-        await nvim.call('append', [2, '']); // ユーザー入力用の3行目を確保
-
-        // extmarkをクリアして再設置
-        const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
-        await nvim.call('nvim_buf_clear_namespace', [bufnr, namespace, 0, -1]);
-
-        const _initialMarkId = await nvim.call('nvim_buf_set_extmark', [
-          bufnr,
-          namespace,
-          1, // 0-based indexing (2行目)
-          0,
-          {
-            virt_lines: [[['You:', 'Title']]],
-            virt_lines_above: false,
-            right_gravity: false,
-            undo_restore: true,
-            invalidate: false,
-            priority: 1000,
-          },
-        ]);
-
-        // Reset extmark for chat input
-
-        // 会話履歴をクリア
+        // Get chat state and renderer
         const conversationId = `buffer-${bufnr}`;
+        const chatState = chatStates.get(conversationId);
+        const renderer = chatRenderers.get(bufnr);
+
+        if (!(chatState && renderer)) {
+          window.showErrorMessage('Chat session not found');
+          return;
+        }
+
+        // Clear chat state
+        chatState.clear();
         agentService.clearConversationHistory(conversationId);
 
-        // カーソルを入力エリアに移動（virt_lineの下の行）
+        // Add initial empty user message for input
+        chatState.addEmptyUserMessage();
+
+        // Re-render with empty state
+        await renderer.clear();
+        await renderer.render(chatState, '# Copilot Chat');
+
+        // カーソルを入力エリアに移動
         await nvim.call('cursor', [3, 1]);
-        await nvim.command('startinsert');
 
         window.showInformationMessage('会話履歴をクリアしました');
       } catch (error) {

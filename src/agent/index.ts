@@ -83,7 +83,8 @@ export class AgentService {
     invocationToken: LanguageModelToolInvocationToken,
     conversationId?: string,
     token?: CancellationToken,
-    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>
+    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>,
+    onTextStream?: (textPart: string) => Promise<void>
   ): Promise<LanguageModelToolResult> {
     if (!this.agent) {
       throw new Error('Agent not initialized. Call initialize() first.');
@@ -100,7 +101,8 @@ export class AgentService {
         invocationToken,
         conversationId,
         token,
-        onToolUse
+        onToolUse,
+        onTextStream
       );
       this.setStatus(AgentStatus.Ready);
       return result;

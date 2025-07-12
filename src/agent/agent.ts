@@ -177,7 +177,8 @@ export class SelfOperatingAgent {
     invocationToken: LanguageModelToolInvocationToken,
     conversationId?: string,
     token?: CancellationToken,
-    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>
+    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>,
+    onTextStream?: (textPart: string) => Promise<void>
   ): Promise<LanguageModelToolResult> {
     const context = this.createExecutionContext(invocationToken, token);
     this.activeContexts.set(context.requestId, context);
@@ -200,7 +201,8 @@ export class SelfOperatingAgent {
       const { hasToolCalls, toolResults, textContent } = await this.processAIResponse(
         response,
         context,
-        onToolUse
+        onToolUse,
+        onTextStream
       );
 
       let finalContent = textContent || '';
@@ -223,7 +225,12 @@ export class SelfOperatingAgent {
 
         // Get AI's final response after tool usage
         const finalResponse = await this.sendMessageToAI(messages, context);
-        const finalResult = await this.processAIResponse(finalResponse, context, onToolUse);
+        const finalResult = await this.processAIResponse(
+          finalResponse,
+          context,
+          onToolUse,
+          onTextStream
+        );
 
         finalContent = finalResult.textContent || assistantMessage;
         // ツール結果は既にリアルタイムで表示されているので、ここでは追加しない
@@ -285,7 +292,8 @@ export class SelfOperatingAgent {
   private async processAIResponse(
     response: LanguageModelChatResponse,
     context: AgentExecutionContext,
-    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>
+    onToolUse?: (toolName: string, input: object, result: LanguageModelToolResult) => Promise<void>,
+    onTextStream?: (textPart: string) => Promise<void>
   ): Promise<{
     hasToolCalls: boolean;
     toolResults: LanguageModelToolResult[];
@@ -299,6 +307,14 @@ export class SelfOperatingAgent {
     for await (const part of response.stream) {
       if (part instanceof LanguageModelTextPart) {
         textContent += part.value;
+        // Stream text to callback for real-time display
+        if (onTextStream) {
+          try {
+            await onTextStream(part.value);
+          } catch (_callbackError) {
+            // Text stream callback failed
+          }
+        }
       } else if (part instanceof LanguageModelToolCallPart) {
         hasToolCalls = true;
         // AI requested tool: ${part.name}
