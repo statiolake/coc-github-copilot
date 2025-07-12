@@ -62,6 +62,37 @@ The extension uses GitHub's device authentication flow:
 4. Extension polls for authentication completion
 5. Language server receives auth token for API access
 
+## Code Quality Principles
+
+When working with this codebase, follow these fundamental principles:
+
+### 1. Comments Policy
+- **Keep public API documentation**: Always document public methods, classes, and exported members with JSDoc/TSDoc
+- **Remove meaningless "what" comments**: Never describe what the code does if it's already clear from reading the code
+- **Keep only "why" comments**: Comments should explain the reasoning, constraints, or important design decisions
+- **Remove implementation notes**: Delete temporary comments, development notes, and process documentation
+
+### 2. DRY Principle (Don't Repeat Yourself)
+- **Extract common patterns**: Create helper functions when you see repeated code patterns
+- **Consolidate similar operations**: Merge functions that do similar things with small variations
+- **Share utilities**: Create reusable utility functions for error handling, validation, etc.
+
+### 3. Minimize Conditional Branching
+- **Use early returns**: Reduce nesting by returning early from functions when conditions aren't met
+- **Prefer ternary operators**: Use conditional expressions for simple branching
+- **Consolidate switch statements**: Combine similar cases or extract common logic
+- **Leverage modern JavaScript**: Use methods like `Array.at()`, optional chaining, and nullish coalescing
+
+### 4. Code Organization
+- **Group related functions**: Keep helper functions near their usage
+- **Make functions focused**: Each function should have a single, clear responsibility
+- **Standardize patterns**: Use consistent error handling and async patterns throughout
+
+### 5. Architecture Constraints
+- **No adhoc buffer manipulation**: Always use the renderer for buffer updates, never modify buffers directly
+- **Maintain differential rendering**: Ensure `lastRendered` state stays synchronized with actual buffer content
+- **Follow the ChatState → Renderer flow**: All UI updates must go through the proper state management and rendering pipeline
+
 ## Testing
 
 Currently no test framework is configured. The package.json test script outputs an error message indicating tests need to be implemented.

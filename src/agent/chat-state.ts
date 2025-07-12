@@ -1,7 +1,8 @@
-// ChatState management class for conversation flow
-
 import type { ChatComponent, ChatStateData } from './chat-types';
 
+/**
+ * Manages chat conversation state including messages and tool usage
+ */
 export class ChatState {
   private data: ChatStateData;
   private componentIdCounter = 0;
@@ -15,14 +16,11 @@ export class ChatState {
     };
   }
 
-  /**
-   * Add a user message to the conversation
-   */
-  addUserMessage(content: string): ChatComponent {
+  private addMessage(role: 'user' | 'assistant', content: string): ChatComponent {
     const component: ChatComponent = {
       id: this.generateComponentId(),
       type: 'message',
-      role: 'user',
+      role,
       content: content.trim(),
       timestamp: Date.now(),
     };
@@ -33,20 +31,17 @@ export class ChatState {
   }
 
   /**
+   * Add a user message to the conversation
+   */
+  addUserMessage(content: string): ChatComponent {
+    return this.addMessage('user', content);
+  }
+
+  /**
    * Add an assistant message to the conversation
    */
   addAssistantMessage(content: string): ChatComponent {
-    const component: ChatComponent = {
-      id: this.generateComponentId(),
-      type: 'message',
-      role: 'assistant',
-      content: content.trim(),
-      timestamp: Date.now(),
-    };
-
-    this.data.components.push(component);
-    this.data.updatedAt = Date.now();
-    return component;
+    return this.addMessage('assistant', content);
   }
 
   /**
@@ -68,42 +63,49 @@ export class ChatState {
   }
 
   /**
-   * Start assistant message for streaming
+   * Start an empty assistant message for streaming
    */
   startAssistantMessage(): ChatComponent {
-    const component: ChatComponent = {
-      id: this.generateComponentId(),
-      type: 'message',
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-    };
-
-    this.data.components.push(component);
-    this.data.updatedAt = Date.now();
-    return component;
+    return this.addMessage('assistant', '');
   }
 
   /**
-   * Append text to the last assistant message
+   * Add an empty user message for input
    */
-  appendToLastAssistantMessage(text: string): void {
+  addEmptyUserMessage(): ChatComponent {
+    return this.addMessage('user', '');
+  }
+
+  private updateLastMessage(
+    role: 'user' | 'assistant',
+    updater: (content: string) => string
+  ): void {
     const lastComponent = this.getLastComponent();
-    if (lastComponent && lastComponent.type === 'message' && lastComponent.role === 'assistant') {
-      lastComponent.content += text;
+    if (lastComponent?.type === 'message' && lastComponent.role === role) {
+      lastComponent.content = updater(lastComponent.content);
       this.data.updatedAt = Date.now();
     }
+  }
+
+  /**
+   * Append text to the last assistant message (for streaming)
+   */
+  appendToLastAssistantMessage(text: string): void {
+    this.updateLastMessage('assistant', (content) => content + text);
   }
 
   /**
    * Update the last assistant message content
    */
   updateLastAssistantMessage(content: string): void {
-    const lastComponent = this.getLastComponent();
-    if (lastComponent && lastComponent.type === 'message' && lastComponent.role === 'assistant') {
-      lastComponent.content = content;
-      this.data.updatedAt = Date.now();
-    }
+    this.updateLastMessage('assistant', () => content);
+  }
+
+  /**
+   * Update the last user message content
+   */
+  updateLastUserMessage(content: string): void {
+    this.updateLastMessage('user', () => content);
   }
 
   /**
@@ -114,12 +116,10 @@ export class ChatState {
   }
 
   /**
-   * Get the last component
+   * Get the last component in the conversation
    */
   getLastComponent(): ChatComponent | null {
-    return this.data.components.length > 0
-      ? this.data.components[this.data.components.length - 1]
-      : null;
+    return this.data.components.at(-1) ?? null;
   }
 
   /**
@@ -134,7 +134,7 @@ export class ChatState {
   }
 
   /**
-   * Check if last message is from assistant (potentially streaming)
+   * Check if the last message is from assistant
    */
   isLastMessageFromAssistant(): boolean {
     const lastComponent = this.getLastComponent();
@@ -142,35 +142,7 @@ export class ChatState {
   }
 
   /**
-   * Add an empty user message for input
-   */
-  addEmptyUserMessage(): ChatComponent {
-    const component: ChatComponent = {
-      id: this.generateComponentId(),
-      type: 'message',
-      role: 'user',
-      content: '',
-      timestamp: Date.now(),
-    };
-
-    this.data.components.push(component);
-    this.data.updatedAt = Date.now();
-    return component;
-  }
-
-  /**
-   * Update the last user message content
-   */
-  updateLastUserMessage(content: string): void {
-    const lastComponent = this.getLastComponent();
-    if (lastComponent && lastComponent.type === 'message' && lastComponent.role === 'user') {
-      lastComponent.content = content;
-      this.data.updatedAt = Date.now();
-    }
-  }
-
-  /**
-   * Clear all components (reset conversation)
+   * Clear all components and reset conversation
    */
   clear(): void {
     this.data.components = [];
@@ -179,7 +151,7 @@ export class ChatState {
   }
 
   /**
-   * Get conversation metadata
+   * Get conversation metadata without components
    */
   getMetadata(): Omit<ChatStateData, 'components'> {
     return {
@@ -189,9 +161,6 @@ export class ChatState {
     };
   }
 
-  /**
-   * Generate unique component ID
-   */
   private generateComponentId(): string {
     return `${this.data.conversationId}-${++this.componentIdCounter}-${Date.now()}`;
   }
