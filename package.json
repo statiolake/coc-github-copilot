@@ -52,6 +52,22 @@
       {
         "command": "copilot.chat",
         "title": "Open GitHub Copilot Chat"
+      },
+      {
+        "command": "copilot.chatSideBarToggle",
+        "title": "Toggle GitHub Copilot Chat Sidebar"
+      },
+      {
+        "command": "copilot.chatSideBarOpen",
+        "title": "Open GitHub Copilot Chat Sidebar"
+      },
+      {
+        "command": "copilot.chatSideBarClose",
+        "title": "Close GitHub Copilot Chat Sidebar"
+      },
+      {
+        "command": "copilot.chatSideBarReset",
+        "title": "Reset GitHub Copilot Chat Sidebar"
       }
     ]
   },

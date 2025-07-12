@@ -4,6 +4,144 @@ import type { LanguageModelToolResult, LMNamespace } from '../api/types';
 import { LanguageModelTextPart } from '../api/types';
 import type { AgentService } from './index';
 
+// Sidebar state management
+let sidebarBufnr: number | null = null;
+let sidebarWinId: number | null = null;
+
+/**
+ * Create and setup a chat buffer with proper configuration
+ */
+async function createChatBuffer(
+  title = '# Copilot Chat'
+): Promise<{ bufnr: number; namespace: number }> {
+  const { nvim } = workspace;
+
+  // Create new buffer
+  const _bufnr = await nvim.call('bufnr', ['%']);
+  await nvim.command('enew');
+  await nvim.command('setfiletype markdown');
+
+  // Clear buffer and set structure
+  await nvim.command('normal! ggdG');
+  await nvim.setLine(title);
+  await nvim.call('append', [1, '']);
+  await nvim.call('append', [2, '']); // Reserve line 3 for user input
+
+  const newBufnr = await nvim.call('bufnr', ['%']);
+
+  // Create namespace and initial extmark
+  const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
+  const _initialMarkId = await nvim.call('nvim_buf_set_extmark', [
+    newBufnr,
+    namespace,
+    1, // 0-based indexing (line 2)
+    0,
+    {
+      virt_lines: [[['You:', 'Title']]],
+      virt_lines_above: false,
+      right_gravity: false,
+      undo_restore: true,
+      invalidate: false,
+      priority: 1000,
+    },
+  ]);
+
+  return { bufnr: newBufnr, namespace };
+}
+
+/**
+ * Open chat sidebar
+ */
+async function openSidebar(agentService: AgentService): Promise<void> {
+  if (!agentService.isReady()) {
+    throw new Error('Agent is not ready. Please initialize it first.');
+  }
+
+  const { nvim } = workspace;
+
+  // Open vertical split on the right
+  await nvim.command('botright 50vnew');
+
+  // Create or reuse existing sidebar buffer
+  if (!sidebarBufnr) {
+    // Create new buffer only if it doesn't exist
+    const { bufnr } = await createChatBuffer('# Copilot Chat (Sidebar)');
+    sidebarBufnr = bufnr;
+  } else {
+    // Check if buffer still exists
+    try {
+      const bufExists = await nvim.call('bufexists', [sidebarBufnr]);
+      if (!bufExists) {
+        // Buffer was deleted, create new one
+        const { bufnr } = await createChatBuffer('# Copilot Chat (Sidebar)');
+        sidebarBufnr = bufnr;
+      } else {
+        // Reuse existing buffer
+        await nvim.command(`buffer ${sidebarBufnr}`);
+      }
+    } catch (_error) {
+      // Error checking buffer, create new one
+      const { bufnr } = await createChatBuffer('# Copilot Chat (Sidebar)');
+      sidebarBufnr = bufnr;
+    }
+  }
+
+  sidebarWinId = await nvim.call('win_getid');
+
+  // Set up key mappings for sidebar
+  await nvim.command(
+    `nnoremap <buffer> <CR> :call CocActionAsync('runCommand', 'copilot.sendMessage', ${sidebarBufnr})<CR>`
+  );
+  await nvim.command(
+    `inoremap <buffer> <C-s> <Esc>:call CocActionAsync('runCommand', 'copilot.sendMessage', ${sidebarBufnr})<CR>`
+  );
+  await nvim.command(
+    `nnoremap <buffer> <C-l> :call CocActionAsync('runCommand', 'copilot.clearHistory', ${sidebarBufnr})<CR>`
+  );
+
+  // Move cursor to input area (find the last line for continued input)
+  const lastLine = await nvim.call('line', ['$']);
+  await nvim.call('cursor', [lastLine, 1]);
+  await nvim.command('startinsert');
+
+  window.showInformationMessage('GitHub Copilot: サイドバーチャットが開始されました。');
+}
+
+/**
+ * Reset sidebar buffer (for complete cleanup)
+ */
+function resetSidebarBuffer(): void {
+  sidebarBufnr = null;
+  sidebarWinId = null;
+}
+
+/**
+ * Close chat sidebar
+ */
+async function closeSidebar(): Promise<void> {
+  if (sidebarWinId) {
+    const { nvim } = workspace;
+    try {
+      // Check if window still exists
+      const windows = await nvim.call('getwininfo');
+      const windowExists = windows.some((win: { winid: number }) => win.winid === sidebarWinId);
+
+      if (windowExists) {
+        await nvim.call('win_gotoid', [sidebarWinId]);
+        await nvim.command('close');
+      }
+    } catch (_error) {
+      // Window might already be closed
+    }
+
+    // Only clear window ID, keep buffer for content preservation
+    sidebarWinId = null;
+    // Note: sidebarBufnr is kept to preserve chat content
+
+    window.showInformationMessage('GitHub Copilot: サイドバーチャットを閉じました。');
+  }
+}
+
 export function registerChatCommands(
   context: ExtensionContext,
   agentService: AgentService,
@@ -18,41 +156,11 @@ export function registerChatCommands(
         throw new Error('Agent is not ready. Please initialize it first.');
       }
 
-      // 新しいバッファを作成
+      // Create chat buffer
+      const { bufnr } = await createChatBuffer();
       const { nvim } = workspace;
-      await nvim.command('enew');
-      await nvim.command('setfiletype markdown');
 
-      // バッファをクリアして構造を設定
-      await nvim.command('normal! ggdG');
-      await nvim.setLine('# Copilot Chat');
-      await nvim.call('append', [1, '']);
-      await nvim.call('append', [2, '']);
-      await nvim.call('append', [3, '']); // ユーザー入力用の4行目を確保
-
-      // バッファ番号を取得
-      const bufnr = await nvim.call('bufnr', ['%']);
-
-      // 初期のユーザー入力エリアにextmarkを設置
-      const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
-      const _initialMarkId = await nvim.call('nvim_buf_set_extmark', [
-        bufnr,
-        namespace,
-        2, // 0-based indexing (3行目)
-        0,
-        {
-          virt_lines: [[['You:', 'Title']]],
-          virt_lines_above: false,
-          right_gravity: false,
-          undo_restore: true,
-          invalidate: false,
-          priority: 1000,
-        },
-      ]);
-
-      // Created initial extmark for chat input
-
-      // キーマッピングを設定
+      // Set up key mappings
       await nvim.command(
         `nnoremap <buffer> <CR> :call CocActionAsync('runCommand', 'copilot.sendMessage', ${bufnr})<CR>`
       );
@@ -63,8 +171,8 @@ export function registerChatCommands(
         `nnoremap <buffer> <C-l> :call CocActionAsync('runCommand', 'copilot.clearHistory', ${bufnr})<CR>`
       );
 
-      // カーソルを入力エリアに移動（virt_lineの下の行）
-      await nvim.call('cursor', [4, 1]);
+      // Move cursor to input area
+      await nvim.call('cursor', [3, 1]);
       await nvim.command('startinsert');
 
       window.showInformationMessage('GitHub Copilot: チャットが開始されました。');
@@ -113,7 +221,7 @@ export function registerChatCommands(
         ]);
         // Found existing extmarks
 
-        let userInputStartLine = 4; // デフォルトは4行目から（virt_lineの下の行）
+        let userInputStartLine = 3; // デフォルトは3行目から（virt_lineの下の行）
 
         if (existingMarks.length > 0) {
           // 最後のextmark（最新のユーザー入力位置）を取得
@@ -164,10 +272,8 @@ export function registerChatCommands(
           return `${lines.slice(0, maxLines).join('\n')}\n... (${lines.length - maxLines} more lines)`;
         };
 
-        // 区切り線を追加してユーザーメッセージを確定
-        await appendToBuffer('');
-        await appendToBuffer('---');
-        await appendToBuffer('');
+        // ユーザーメッセージを確定（区切り線なし）
+        // No separator needed
 
         // 会話IDとしてバッファ番号を使用
         const conversationId = `buffer-${bufnr}`;
@@ -240,9 +346,26 @@ export function registerChatCommands(
           .map((c) => c.value)
           .join('\n');
 
+        // エージェントの応答にvirtual textを追加
+        const agentResponseLine = await nvim.call('line', ['$']);
+        const _agentMarkId = await nvim.call('nvim_buf_set_extmark', [
+          bufnr,
+          namespace,
+          agentResponseLine, // 0-based indexing
+          0,
+          {
+            virt_lines: [[['Agent:', 'Title']]],
+            virt_lines_above: false,
+            right_gravity: false,
+            undo_restore: true,
+            invalidate: false,
+            priority: 1000,
+          },
+        ]);
+
+        await appendToBuffer(''); // エージェント応答用の空行
         await appendToBuffer(resultText);
-        await appendToBuffer('');
-        await appendToBuffer('');
+        await appendToBuffer(''); // 次のユーザー入力用の空行
 
         // 新しいユーザー入力エリアのextmarkを設置
         const newPromptLine = await nvim.call('line', ['$']);
@@ -294,8 +417,7 @@ export function registerChatCommands(
         await nvim.command('normal! ggdG');
         await nvim.setLine('# Copilot Chat');
         await nvim.call('append', [1, '']);
-        await nvim.call('append', [2, '']);
-        await nvim.call('append', [3, '']); // ユーザー入力用の4行目を確保
+        await nvim.call('append', [2, '']); // ユーザー入力用の3行目を確保
 
         // extmarkをクリアして再設置
         const namespace = await nvim.call('nvim_create_namespace', ['copilot_chat']);
@@ -304,7 +426,7 @@ export function registerChatCommands(
         const _initialMarkId = await nvim.call('nvim_buf_set_extmark', [
           bufnr,
           namespace,
-          2, // 0-based indexing (3行目)
+          1, // 0-based indexing (2行目)
           0,
           {
             virt_lines: [[['You:', 'Title']]],
@@ -323,7 +445,7 @@ export function registerChatCommands(
         agentService.clearConversationHistory(conversationId);
 
         // カーソルを入力エリアに移動（virt_lineの下の行）
-        await nvim.call('cursor', [4, 1]);
+        await nvim.call('cursor', [3, 1]);
         await nvim.command('startinsert');
 
         window.showInformationMessage('会話履歴をクリアしました');
@@ -334,5 +456,67 @@ export function registerChatCommands(
     }
   );
 
-  context.subscriptions.push(chatCommand, sendMessageCommand, clearHistoryCommand);
+  // サイドバートグルコマンド
+  const chatSideBarToggleCommand = commands.registerCommand(
+    'copilot.chatSideBarToggle',
+    async () => {
+      try {
+        if (sidebarWinId && sidebarBufnr) {
+          // Check if sidebar is still open
+          const { nvim } = workspace;
+          const windows = await nvim.call('getwininfo');
+          const isOpen = windows.some((win: { winid: number }) => win.winid === sidebarWinId);
+
+          if (isOpen) {
+            await closeSidebar();
+          } else {
+            await openSidebar(agentService);
+          }
+        } else {
+          await openSidebar(agentService);
+        }
+      } catch (error) {
+        window.showErrorMessage(`サイドバートグルエラー: ${error}`);
+      }
+    }
+  );
+
+  // サイドバーオープンコマンド
+  const chatSideBarOpenCommand = commands.registerCommand('copilot.chatSideBarOpen', async () => {
+    try {
+      await openSidebar(agentService);
+    } catch (error) {
+      window.showErrorMessage(`サイドバーオープンエラー: ${error}`);
+    }
+  });
+
+  // サイドバークローズコマンド
+  const chatSideBarCloseCommand = commands.registerCommand('copilot.chatSideBarClose', async () => {
+    try {
+      await closeSidebar();
+    } catch (error) {
+      window.showErrorMessage(`サイドバークローズエラー: ${error}`);
+    }
+  });
+
+  // サイドバーリセットコマンド（内容を完全にクリア）
+  const chatSideBarResetCommand = commands.registerCommand('copilot.chatSideBarReset', async () => {
+    try {
+      await closeSidebar();
+      resetSidebarBuffer();
+      window.showInformationMessage('GitHub Copilot: サイドバーチャットをリセットしました。');
+    } catch (error) {
+      window.showErrorMessage(`サイドバーリセットエラー: ${error}`);
+    }
+  });
+
+  context.subscriptions.push(
+    chatCommand,
+    sendMessageCommand,
+    clearHistoryCommand,
+    chatSideBarToggleCommand,
+    chatSideBarOpenCommand,
+    chatSideBarCloseCommand,
+    chatSideBarResetCommand
+  );
 }
