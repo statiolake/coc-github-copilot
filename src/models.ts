@@ -1,6 +1,4 @@
-// Model discovery and management from GitHub Copilot API
-
-import { Emitter } from 'coc.nvim';
+// GitHub Copilot model discovery and management
 import { z } from 'zod';
 import {
   type ApiToken,
@@ -9,8 +7,7 @@ import {
   requestApiToken,
 } from './auth';
 import type { CopilotChatConfig } from './config';
-import type { Event, LanguageModelChat, LanguageModelChatSelector } from './types';
-import { LanguageModelError } from './types';
+import type { Model } from './types';
 
 const DEFAULT_MODEL_ID = 'gpt-4.1';
 
@@ -46,7 +43,6 @@ const ModelSchema = z.object({
   policy: ModelPolicySchema.optional(),
 });
 
-// Transforms raw API response, filtering out invalid models
 const ModelResponseSchema = z.object({
   data: z.array(z.unknown()).transform((rawModels) => {
     const validModels: Model[] = [];
@@ -62,83 +58,31 @@ const ModelResponseSchema = z.object({
   }),
 });
 
-export type ModelLimits = z.infer<typeof ModelLimitsSchema>;
-export type ModelSupportedFeatures = z.infer<typeof ModelSupportedFeaturesSchema>;
-export type ModelCapabilities = z.infer<typeof ModelCapabilitiesSchema>;
-export type ModelPolicy = z.infer<typeof ModelPolicySchema>;
-export type Model = z.infer<typeof ModelSchema>;
-export type ModelResponse = z.infer<typeof ModelResponseSchema>;
-
-export class LanguageModelManager {
+export class GitHubCopilotModelManager {
   private config: CopilotChatConfig;
   private oauthToken?: string;
   private apiToken?: ApiToken;
   private models?: Model[];
-  private _onDidChangeChatModels = new Emitter<void>();
-
-  readonly onDidChangeChatModels: Event<void> = this._onDidChangeChatModels.event;
 
   constructor(config: CopilotChatConfig) {
     this.config = config;
     this.oauthToken = this.loadOauthToken();
-
-    if (this.oauthToken) {
-      this.updateModels().catch(() => {
-        // Ignore initial load failures
-      });
-    }
   }
 
-  async selectChatModels(
-    selector: LanguageModelChatSelector,
-    createChatModel: (model: Model) => LanguageModelChat
-  ): Promise<LanguageModelChat[]> {
+  async getModels(): Promise<Model[]> {
     if (!this.models) {
       if (!this.oauthToken) {
-        throw LanguageModelError.NoPermissions(
-          'Not authenticated. Please sign in to GitHub Copilot.'
-        );
+        throw new Error('Not authenticated. Please sign in to GitHub Copilot.');
       }
-
       await this.updateModels();
     }
 
-    if (!this.models) {
-      throw LanguageModelError.NotFound('Failed to load models');
-    }
-
-    const filteredModels = this.models.filter((model) => {
-      // Only support 'copilot' vendor from this extension
-      if (selector?.vendor) {
-        if (selector.vendor.toLowerCase() !== 'copilot') {
-          return false;
-        }
-      }
-
-      if (selector?.family) {
-        if (!model.capabilities.family.toLowerCase().includes(selector.family.toLowerCase())) {
-          return false;
-        }
-      }
-
-      if (selector?.id && model.id !== selector.id) {
-        return false;
-      }
-
-      // Currently all models are version 1.0
-      if (selector?.version && selector.version !== '1.0') {
-        return false;
-      }
-
-      return true;
-    });
-
-    return filteredModels.map((model) => createChatModel(model));
+    return this.models || [];
   }
 
   async getApiToken(): Promise<ApiToken> {
     if (!this.oauthToken) {
-      throw LanguageModelError.NoPermissions('No OAuth token available');
+      throw new Error('No OAuth token available');
     }
 
     // Refresh token if expires in less than 5 minutes
@@ -174,9 +118,7 @@ export class LanguageModelManager {
       const parseResult = ModelResponseSchema.safeParse(rawData);
 
       if (!parseResult.success) {
-        throw LanguageModelError.NoPermissions(
-          `Invalid model response format: ${parseResult.error.message}`
-        );
+        throw new Error(`Invalid model response format: ${parseResult.error.message}`);
       }
 
       const data = parseResult.data;
@@ -207,14 +149,9 @@ export class LanguageModelManager {
       }
 
       this.models = models;
-      this._onDidChangeChatModels.fire();
     } catch (_error) {
-      throw LanguageModelError.NotFound('Failed to load models');
+      throw new Error('Failed to load models');
     }
-  }
-
-  dispose(): void {
-    this._onDidChangeChatModels.dispose();
   }
 
   private loadOauthToken(): string | undefined {
@@ -226,3 +163,5 @@ export class LanguageModelManager {
     }
   }
 }
+
+export type { Model };

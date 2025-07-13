@@ -48,26 +48,6 @@
       {
         "command": "copilot.disable",
         "title": "Disable GitHub Copilot"
-      },
-      {
-        "command": "copilot.chat",
-        "title": "Open GitHub Copilot Chat"
-      },
-      {
-        "command": "copilot.chatSideBarToggle",
-        "title": "Toggle GitHub Copilot Chat Sidebar"
-      },
-      {
-        "command": "copilot.chatSideBarOpen",
-        "title": "Open GitHub Copilot Chat Sidebar"
-      },
-      {
-        "command": "copilot.chatSideBarClose",
-        "title": "Close GitHub Copilot Chat Sidebar"
-      },
-      {
-        "command": "copilot.chatSideBarReset",
-        "title": "Reset GitHub Copilot Chat Sidebar"
       }
     ]
   },
@@ -115,12 +95,16 @@
     "coc.nvim": "^0.0.83-next.9",
     "husky": "^9.1.7",
     "lint-staged": "^16.1.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "@statiolake/coc-lm-api": "file:../coc-lm-api"
   },
   "dependencies": {
     "@github/copilot-language-server": "^1.338.0",
     "zod": "^3.25.76"
   },
+  "extensionDependencies": [
+    "@statiolake/coc-lm-api"
+  ],
   "lint-staged": {
     "*.{ts,js,json}": [
       "biome check --fix --no-errors-on-unmatched"
