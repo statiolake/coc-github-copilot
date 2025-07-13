@@ -1,6 +1,6 @@
 {
   "name": "@statiolake/coc-github-copilot",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "GitHub Copilot extension for coc.nvim with inline completion support",
   "main": "lib/index.js",
   "activationEvents": [
