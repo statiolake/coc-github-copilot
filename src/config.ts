@@ -9,7 +9,7 @@ export class CopilotChatConfig {
 
   constructor(configuration: CopilotChatConfiguration = {}) {
     this.config = {
-      baseUrl: configuration.baseUrl || 'https://api.githubcopilot.com',
+      baseUrl: configuration.baseUrl || 'https://api.github.com',
       oauthDomain: configuration.oauthDomain || 'github.com',
     };
   }
@@ -23,7 +23,7 @@ export class CopilotChatConfig {
   }
 
   tokenUrl(): string {
-    return `${this.config.baseUrl}/chat/token`;
+    return `${this.config.baseUrl}/copilot_internal/v2/token`;
   }
 
   modelsUrlFromEndpoint(endpoint: string): string {

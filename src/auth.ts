@@ -1,17 +1,15 @@
 // GitHub Copilot authentication token management
+
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import type { ApiToken } from './types';
 
 export type { ApiToken };
 
-const AppsConfigSchema = z.object({
-  'github.com': z.object({
-    oauth_token: z.string(),
-  }),
-});
+// Original GitHub Copilot apps.json format: {"github.com:Iv1.xxx": {"oauth_token": "...", "user": "..."}}
+// We parse this manually in extractOauthTokenFromApps instead of using a schema
 
 const HostsConfigSchema = z.record(
   z.string(),
@@ -30,35 +28,86 @@ const TokenResponseSchema = z.object({
 });
 
 export function getCopilotConfigDir(): string {
-  return join(homedir(), '.config', 'github-copilot');
+  if (process.platform === 'win32') {
+    return join(homedir(), 'AppData', 'Local', 'github-copilot');
+  }
+  const xdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const configDir = xdgConfigHome || join(homedir(), '.config');
+  return join(configDir, 'github-copilot');
+}
+
+function extractOauthTokenFromApps(appsContent: string, domain: string): string | undefined {
+  console.log(`Parsing apps.json content for domain: ${domain}`);
+
+  const data = JSON.parse(appsContent);
+  console.log('apps.json keys found:', Object.keys(data));
+
+  // apps.json format: {"github.com:Iv1.xxx": {"oauth_token": "...", "user": "..."}}
+  for (const [key, value] of Object.entries(data)) {
+    console.log(`Checking key: ${key}`);
+    if (key.startsWith(`${domain}:`)) {
+      console.log(`Found matching domain key: ${key}`);
+      if (typeof value === 'object' && value !== null) {
+        const obj = value as Record<string, unknown>;
+        console.log('Object keys:', Object.keys(obj));
+        if (obj.oauth_token && typeof obj.oauth_token === 'string') {
+          console.log('Found oauth_token in object');
+          return obj.oauth_token;
+        }
+        console.log('No oauth_token found in object');
+      }
+    }
+  }
+
+  console.log('No matching domain key found in apps.json');
+  return undefined;
 }
 
 export function extractOauthTokenFromConfig(configDir: string, domain: string): string {
+  console.log(
+    `Attempting to extract OAuth token for domain: ${domain} from config dir: ${configDir}`
+  );
+
   // Try apps.json first
-  try {
-    const appsPath = join(configDir, 'apps.json');
+  const appsPath = join(configDir, 'apps.json');
+  console.log(`Checking for apps.json at: ${appsPath}`);
+
+  if (existsSync(appsPath)) {
+    console.log('apps.json exists, attempting to read');
     const appsContent = readFileSync(appsPath, 'utf-8');
-    const appsConfig = AppsConfigSchema.parse(JSON.parse(appsContent));
-    
-    if (domain === 'github.com' && appsConfig['github.com']?.oauth_token) {
-      return appsConfig['github.com'].oauth_token;
+    console.log(`apps.json content length: ${appsContent.length}`);
+
+    const token = extractOauthTokenFromApps(appsContent, domain);
+    if (token) {
+      console.log('Successfully extracted OAuth token from apps.json');
+      return token;
     }
-  } catch {
-    // Try hosts.json
-    try {
-      const hostsPath = join(configDir, 'hosts.json');
-      const hostsContent = readFileSync(hostsPath, 'utf-8');
-      const hostsConfig = HostsConfigSchema.parse(JSON.parse(hostsContent));
-      
-      const hostConfig = hostsConfig[domain];
-      if (hostConfig?.oauth_token) {
-        return hostConfig.oauth_token;
-      }
-    } catch {
-      // Both failed
-    }
+    console.log('No token found in apps.json');
+  } else {
+    console.log('apps.json does not exist');
   }
-  
+
+  // Try hosts.json as fallback
+  const hostsPath = join(configDir, 'hosts.json');
+  console.log(`Checking for hosts.json at: ${hostsPath}`);
+
+  if (existsSync(hostsPath)) {
+    console.log('hosts.json exists, attempting to read');
+    const hostsContent = readFileSync(hostsPath, 'utf-8');
+    console.log(`hosts.json content length: ${hostsContent.length}`);
+
+    const hostsConfig = HostsConfigSchema.parse(JSON.parse(hostsContent));
+
+    const hostConfig = hostsConfig[domain];
+    if (hostConfig?.oauth_token) {
+      console.log('Successfully extracted OAuth token from hosts.json');
+      return hostConfig.oauth_token;
+    }
+    console.log('No token found in hosts.json');
+  } else {
+    console.log('hosts.json does not exist');
+  }
+
   throw new Error(`No OAuth token found for domain: ${domain}`);
 }
 

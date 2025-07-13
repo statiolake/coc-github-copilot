@@ -1,11 +1,12 @@
 import type { LmApi } from '@statiolake/coc-lm-api';
-import type { ExtensionContext } from 'coc.nvim';
+import type { Extension, ExtensionContext } from 'coc.nvim';
 import {
   commands,
   extensions,
   LanguageClient,
   type LanguageClientOptions,
   type ServerOptions,
+  type StatusBarItem,
   services,
   window,
   workspace,
@@ -42,11 +43,18 @@ export class CopilotAuthManager {
   private client: LanguageClient;
   private isSignedIn = false;
   private user: string | undefined;
+  private statusBarItem: StatusBarItem;
+  private onStatusChangeCallback?: (isSignedIn: boolean) => void;
 
   constructor(client: LanguageClient) {
     this.client = client;
+    this.statusBarItem = window.createStatusBarItem(0, { progress: false });
+    this.updateStatusBar();
 
     this.client.onNotification('didChangeStatus', (params: StatusNotification) => {
+      console.log('GitHub Copilot: Status notification received:', params);
+      const wasSignedIn = this.isSignedIn;
+
       if (params.kind === 'Normal') {
         this.isSignedIn = true;
         if (params.message) {
@@ -58,6 +66,16 @@ export class CopilotAuthManager {
       } else if (params.kind === 'Error' && params.message?.toLowerCase().includes('not signed')) {
         this.isSignedIn = false;
         this.user = undefined;
+      }
+
+      this.updateStatusBar();
+
+      // Trigger callback if sign-in status changed
+      if (wasSignedIn !== this.isSignedIn && this.onStatusChangeCallback) {
+        console.log(
+          `GitHub Copilot: Auth status changed from ${wasSignedIn} to ${this.isSignedIn}`
+        );
+        this.onStatusChangeCallback(this.isSignedIn);
       }
     });
   }
@@ -130,6 +148,24 @@ export class CopilotAuthManager {
     return this.user;
   }
 
+  onStatusChange(callback: (isSignedIn: boolean) => void): void {
+    this.onStatusChangeCallback = callback;
+  }
+
+  private updateStatusBar(): void {
+    if (this.isSignedIn) {
+      const userDisplay = this.user ? ` (${this.user})` : '';
+      this.statusBarItem.text = `Copilot: Ready${userDisplay}`;
+    } else {
+      this.statusBarItem.text = 'Copilot: N/A';
+    }
+    this.statusBarItem.show();
+  }
+
+  dispose(): void {
+    this.statusBarItem.dispose();
+  }
+
   private async copyToClipboard(text: string): Promise<void> {
     try {
       await workspace.nvim.call('setreg', ['+', text]);
@@ -194,6 +230,74 @@ export async function configureClient(client: LanguageClient): Promise<void> {
   });
 }
 
+// Main suggestion functionality initialization
+export async function initializeLanguageClient(context: ExtensionContext): Promise<LanguageClient> {
+  const copilotClient = createLanguageClient(context);
+  context.subscriptions.push(services.registerLanguageClient(copilotClient));
+
+  await copilotClient.onReady();
+  await configureClient(copilotClient);
+
+  return copilotClient;
+}
+
+/**
+ * Registers GitHub Copilot models with the LM API when authenticated.
+ */
+async function registerModelsWithLMAPI(): Promise<void> {
+  console.log('GitHub Copilot: Starting model registration with LM API');
+
+  // Note: getExtensionById() exists in coc.nvim implementation but not in type definitions
+  // biome-ignore lint/suspicious/noExplicitAny: coc.nvim API limitation - getExtensionById exists at runtime
+  const lmApiExtension: Extension<LmApi> = (extensions as any).getExtensionById(
+    '@statiolake/coc-lm-api'
+  );
+  if (!lmApiExtension?.exports) {
+    throw new Error('LM API extension not found or not activated');
+  }
+  const lmApi: LmApi = lmApiExtension.exports;
+  console.log('GitHub Copilot: Successfully obtained LM API reference');
+
+  // Initialize GitHub Copilot model manager
+  console.log('GitHub Copilot: Creating configuration and model manager');
+  const config = new CopilotChatConfig();
+  const modelManager = new GitHubCopilotModelManager(config);
+
+  console.log('GitHub Copilot: Fetching available models');
+  const models = await modelManager.getModels();
+  console.log(`GitHub Copilot: Found ${models.length} models`);
+
+  // Register each model with LM API
+  for (const model of models) {
+    console.log(`GitHub Copilot: Registering model ${model.id}`);
+    const chatModel = new CopilotLanguageModelChat(model, config, () => modelManager.getApiToken());
+
+    lmApi.registerChatModel(chatModel);
+    console.log(`GitHub Copilot: Successfully registered model ${model.id}`);
+  }
+
+  console.log(`GitHub Copilot: Registered ${models.length} models with LM API`);
+}
+
+/**
+ * Handles authentication status changes and manages model registration.
+ */
+function setupAuthStatusHandler(authManager: CopilotAuthManager): void {
+  authManager.onStatusChange(async (isSignedIn: boolean) => {
+    if (isSignedIn) {
+      console.log('GitHub Copilot: Authenticated, starting model registration');
+      try {
+        await registerModelsWithLMAPI();
+      } catch (error) {
+        console.log('GitHub Copilot: Failed to register models after authentication:', error);
+        window.showErrorMessage(`GitHub Copilot: Failed to register models - ${error}`);
+      }
+    } else {
+      console.log('GitHub Copilot: Not authenticated, skipping model registration');
+    }
+  });
+}
+
 // Command registration
 export function registerCommands(context: ExtensionContext, authManager: CopilotAuthManager): void {
   context.subscriptions.push(
@@ -219,125 +323,44 @@ export function registerCommands(context: ExtensionContext, authManager: Copilot
   );
 }
 
-// Main suggestion functionality initialization
-export async function initializeSuggestion(context: ExtensionContext): Promise<{
-  authManager: CopilotAuthManager;
-  client: LanguageClient;
-}> {
-  const copilotClient = createLanguageClient(context);
-  context.subscriptions.push(services.registerLanguageClient(copilotClient));
+export async function activate(context: ExtensionContext): Promise<void> {
+  console.log('GitHub Copilot extension activation started');
 
-  await copilotClient.onReady();
-  await configureClient(copilotClient);
+  console.log('GitHub Copilot: Initializing language client');
+  const client = await initializeLanguageClient(context);
+  console.log('GitHub Copilot: Language client initialized');
 
-  const authManager = new CopilotAuthManager(copilotClient);
+  console.log('GitHub Copilot: Setting up authentication manager');
+  const authManager = new CopilotAuthManager(client);
+  context.subscriptions.push(authManager);
+
+  console.log('GitHub Copilot: Registering commands');
   registerCommands(context, authManager);
 
-  return { authManager, client: copilotClient };
-}
+  console.log('GitHub Copilot: Setting up auth status handler');
+  setupAuthStatusHandler(authManager);
 
-async function registerModelsWithLMAPI() {
-  const lmApiExtension: Extension<LmApi> = (extensions as any).getExtensionById('@statiolake/coc-lm-api');
-  if (!lmApiExtension
-  try {
-    // Wait for LM API extension to be available
-    let attempts = 0;
-    const maxAttempts = 10;
-
-    while (attempts < maxAttempts) {
-      // Note: getExtensionById exists in coc.nvim implementation but not in type definitions
-      // biome-ignore lint/suspicious/noExplicitAny: coc.nvim API limitation - getExtensionById exists at runtime
-      const lmApiExtension = (extensions as any).getExtensionById('@statiolake/coc-lm-api');
-
-      if (lmApiExtension?.isActive && lmApiExtension.exports?.registerChatModel) {
-        const lmApi = lmApiExtension.exports;
-
-        // Initialize GitHub Copilot model manager
-        const config = new CopilotChatConfig();
-        const modelManager = new GitHubCopilotModelManager(config);
-
+  // Schedule model registration after CocNvimInit
+  workspace.registerAutocmd({
+    event: 'User CocNvimInit',
+    callback: async () => {
+      console.log('GitHub Copilot: CocNvimInit event received, starting model registration');
+      // Try initial model registration if already authenticated
+      if (authManager.isAuthenticated()) {
+        console.log('GitHub Copilot: Already authenticated, attempting initial model registration');
         try {
-          const models = await modelManager.getModels();
-
-          // Register each model with LM API
-          for (const model of models) {
-            const chatModel = new CopilotLanguageModelChat(model, config, () =>
-              modelManager.getApiToken()
-            );
-
-            lmApi.registerChatModel(chatModel);
-          }
-
-          console.log(`Registered ${models.length} GitHub Copilot models with LM API`);
-          return;
+          await registerModelsWithLMAPI();
         } catch (error) {
-          console.log('Failed to register GitHub Copilot models:', error);
-          return;
+          console.log(
+            'GitHub Copilot: Initial model registration failed (will retry on auth change):',
+            error
+          );
         }
+      } else {
+        console.log('GitHub Copilot: Not authenticated yet, waiting for authentication');
       }
+    },
+  });
 
-      attempts++;
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-
-    console.log('LM API extension not found after waiting');
-  } catch (error) {
-    console.log('Error registering GitHub Copilot models:', error);
-  }
-}
-
-export async function activate(context: ExtensionContext): Promise<void> {
-  await initializeSuggestion(context);
-
-  // Register GitHub Copilot models with LM API when available
-  const registerModelsWithLMAPI = async () => {
-    try {
-      // Wait for LM API extension to be available
-      let attempts = 0;
-      const maxAttempts = 10;
-
-      while (attempts < maxAttempts) {
-        // Note: getExtensionById exists in coc.nvim implementation but not in type definitions
-        // biome-ignore lint/suspicious/noExplicitAny: coc.nvim API limitation - getExtensionById exists at runtime
-        const lmApiExtension = (extensions as any).getExtensionById('@statiolake/coc-lm-api');
-
-        if (lmApiExtension?.isActive && lmApiExtension.exports?.registerChatModel) {
-          const lmApi = lmApiExtension.exports;
-
-          // Initialize GitHub Copilot model manager
-          const config = new CopilotChatConfig();
-          const modelManager = new GitHubCopilotModelManager(config);
-
-          try {
-            const models = await modelManager.getModels();
-
-            // Register each model with LM API
-            for (const model of models) {
-              const chatModel = new CopilotLanguageModelChat(model, config, () =>
-                modelManager.getApiToken()
-              );
-
-              lmApi.registerChatModel(chatModel);
-            }
-
-            console.log(`Registered ${models.length} GitHub Copilot models with LM API`);
-            return;
-          } catch (error) {
-            console.log('Failed to register GitHub Copilot models:', error);
-            return;
-          }
-        }
-
-        attempts++;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-
-      console.log('LM API extension not found after waiting');
-    } catch (error) {
-      console.log('Error registering GitHub Copilot models:', error);
-    }
-  };
-
-  // Start registration process in background
-  setTimeout(registerModelsWithLMAPI, 2000);
+  console.log('GitHub Copilot extension activation completed');
 }

@@ -42,13 +42,16 @@ export interface LanguageModelChat {
   ): Promise<LanguageModelChatResponse>;
 }
 
-export interface LanguageModelTool<T = any> {
+export interface LanguageModelTool<T = unknown> {
   description: string;
   inputSchema: object;
-  invoke(options: LanguageModelToolInvocationOptions<T>, token?: CancellationToken): Promise<LanguageModelToolResult>;
+  invoke(
+    options: LanguageModelToolInvocationOptions<T>,
+    token?: CancellationToken
+  ): Promise<LanguageModelToolResult>;
 }
 
-export interface LanguageModelToolInvocationOptions<T = any> {
+export interface LanguageModelToolInvocationOptions<T = unknown> {
   input: T;
 }
 
@@ -66,9 +69,7 @@ export interface CancellationToken {
   onCancellationRequested: Event<void>;
 }
 
-export interface Event<T> {
-  (listener: (e: T) => void): Disposable;
-}
+export type Event<T> = (listener: (e: T) => void) => Disposable;
 
 export interface Disposable {
   dispose(): void;

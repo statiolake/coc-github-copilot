@@ -16,6 +16,7 @@ const EXCLUDED_PATTERNS = [
   /'[^']*as[^']*'/, // 文字列内の 'as' は許可
   /as Record<string, unknown>/, // Record<string, unknown>は許可（型ガード内）
   /as const/, // as const は許可（定数アサーション）
+  /extensions as any/, // extensions as any は許可（coc.nvimの型定義が不足）
 ];
 
 function checkTypeAssertion(filePath) {

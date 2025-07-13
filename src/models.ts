@@ -60,18 +60,17 @@ const ModelResponseSchema = z.object({
 
 export class GitHubCopilotModelManager {
   private config: CopilotChatConfig;
-  private oauthToken?: string;
   private apiToken?: ApiToken;
   private models?: Model[];
 
   constructor(config: CopilotChatConfig) {
     this.config = config;
-    this.oauthToken = this.loadOauthToken();
   }
 
   async getModels(): Promise<Model[]> {
     if (!this.models) {
-      if (!this.oauthToken) {
+      const oauthToken = this.loadOauthToken();
+      if (!oauthToken) {
         throw new Error('Not authenticated. Please sign in to GitHub Copilot.');
       }
       await this.updateModels();
@@ -81,7 +80,8 @@ export class GitHubCopilotModelManager {
   }
 
   async getApiToken(): Promise<ApiToken> {
-    if (!this.oauthToken) {
+    const oauthToken = this.loadOauthToken();
+    if (!oauthToken) {
       throw new Error('No OAuth token available');
     }
 
@@ -91,7 +91,7 @@ export class GitHubCopilotModelManager {
     }
 
     const tokenUrl = this.config.tokenUrl();
-    this.apiToken = await requestApiToken(this.oauthToken, tokenUrl);
+    this.apiToken = await requestApiToken(oauthToken, tokenUrl);
     return this.apiToken;
   }
 
@@ -149,8 +149,9 @@ export class GitHubCopilotModelManager {
       }
 
       this.models = models;
-    } catch (_error) {
-      throw new Error('Failed to load models');
+    } catch (error) {
+      console.log('Error in updateModels:', error);
+      throw new Error(`Failed to load models: ${error}`);
     }
   }
 
@@ -158,7 +159,8 @@ export class GitHubCopilotModelManager {
     try {
       const configDir = getCopilotConfigDir();
       return extractOauthTokenFromConfig(configDir, this.config.oauthDomain());
-    } catch {
+    } catch (e) {
+      console.error('Failed to load OAuth token:', e);
       return undefined;
     }
   }
