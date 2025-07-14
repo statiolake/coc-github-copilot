@@ -1,29 +1,27 @@
-// GitHub Copilot configuration management
-export interface CopilotChatConfiguration {
-  baseUrl?: string;
-  oauthDomain?: string;
-}
+class CopilotChatConfig {
+  private readonly _baseUrl: string;
+  private readonly _oauthDomain: string;
 
-export class CopilotChatConfig {
-  private config: Required<CopilotChatConfiguration>;
-
-  constructor(configuration: CopilotChatConfiguration = {}) {
-    this.config = {
-      baseUrl: configuration.baseUrl || 'https://api.github.com',
-      oauthDomain: configuration.oauthDomain || 'github.com',
-    };
+  constructor(
+    opts: {
+      baseUrl?: string;
+      oauthDomain?: string;
+    } = {}
+  ) {
+    this._baseUrl = opts.baseUrl || 'https://api.github.com';
+    this._oauthDomain = opts.oauthDomain || 'github.com';
   }
 
   baseUrl(): string {
-    return this.config.baseUrl;
+    return this._baseUrl;
   }
 
   oauthDomain(): string {
-    return this.config.oauthDomain;
+    return this._oauthDomain;
   }
 
   tokenUrl(): string {
-    return `${this.config.baseUrl}/copilot_internal/v2/token`;
+    return `${this._baseUrl}/copilot_internal/v2/token`;
   }
 
   modelsUrlFromEndpoint(endpoint: string): string {
@@ -34,3 +32,5 @@ export class CopilotChatConfig {
     return `${endpoint}/chat/completions`;
   }
 }
+
+export { CopilotChatConfig };

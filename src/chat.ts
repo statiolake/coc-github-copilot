@@ -1,20 +1,21 @@
-// GitHub Copilot Language Model Chat implementation
 import { TextDecoder } from 'node:util';
 import type {
-  CancellationToken,
   LanguageModelChat,
   LanguageModelChatMessage,
   LanguageModelChatRequestOptions,
   LanguageModelChatResponse,
+  LmApi,
 } from '@statiolake/coc-lm-api';
 import {
   LanguageModelChatMessageRole,
   LanguageModelTextPart,
   LanguageModelToolCallPart,
 } from '@statiolake/coc-lm-api';
+import { type CancellationToken, type Extension, extensions } from 'coc.nvim';
 import { z } from 'zod';
+import type { CopilotAuthManager } from './auth';
 import type { CopilotChatConfig } from './config';
-import type { ApiToken, Model } from './types';
+import { GitHubCopilotModelManager, type Model } from './models';
 
 // Zod schemas for response validation
 const ToolCallFunctionSchema = z.object({
@@ -85,12 +86,12 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
   private model: Model;
   private config: CopilotChatConfig;
-  private getApiToken: () => Promise<ApiToken>;
+  private authManager: CopilotAuthManager;
 
-  constructor(model: Model, config: CopilotChatConfig, getApiToken: () => Promise<ApiToken>) {
+  constructor(model: Model, config: CopilotChatConfig, authManager: CopilotAuthManager) {
     this.model = model;
     this.config = config;
-    this.getApiToken = getApiToken;
+    this.authManager = authManager;
 
     this.id = model.id;
     this.name = model.name;
@@ -105,7 +106,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
     options?: LanguageModelChatRequestOptions,
     token?: CancellationToken
   ): Promise<LanguageModelChatResponse> {
-    const apiToken = await this.getApiToken();
+    const apiToken = await this.authManager.getChatApiToken();
     const completionsUrl = this.config.completionsUrlFromEndpoint(apiToken.apiEndpoint);
 
     // Convert messages to GitHub Copilot format
@@ -402,4 +403,44 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
             .join('');
     return Math.ceil(textToCount.length / 4); // Rough approximation: 1 token per 4 characters
   }
+}
+
+/**
+ * Registers GitHub Copilot models with the LM API when authenticated.
+ */
+export async function registerModelsWithLMAPI(
+  config: CopilotChatConfig,
+  authManager: CopilotAuthManager
+): Promise<void> {
+  console.log('GitHub Copilot: Starting model registration with LM API');
+
+  // Note: getExtensionById() exists in coc.nvim implementation but not in type definitions
+  // biome-ignore lint/suspicious/noExplicitAny: coc.nvim API limitation - getExtensionById exists at runtime
+  const lmApiExtension: Extension<LmApi> = (extensions as any).getExtensionById(
+    '@statiolake/coc-lm-api'
+  );
+  if (!lmApiExtension?.exports) {
+    throw new Error('LM API extension not found or not activated');
+  }
+  const lmApi: LmApi = lmApiExtension.exports;
+  console.log('GitHub Copilot: Successfully obtained LM API reference');
+
+  // Initialize GitHub Copilot model manager
+  console.log('GitHub Copilot: Creating configuration and model manager');
+  const modelManager = new GitHubCopilotModelManager(config, authManager);
+
+  console.log('GitHub Copilot: Fetching available models');
+  const models = await modelManager.getModels();
+  console.log(`GitHub Copilot: Found ${models.length} models`);
+
+  // Register each model with LM API
+  for (const model of models) {
+    console.log(`GitHub Copilot: Registering model ${model.id}`);
+    const chatModel = new CopilotLanguageModelChat(model, config, authManager);
+
+    lmApi.registerChatModel(chatModel);
+    console.log(`GitHub Copilot: Successfully registered model ${model.id}`);
+  }
+
+  console.log(`GitHub Copilot: Registered ${models.length} models with LM API`);
 }

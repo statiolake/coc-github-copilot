@@ -8,23 +8,22 @@ This is a GitHub Copilot extension for coc.nvim that provides AI-powered code co
 
 ## Architecture
 
-The codebase is structured into two main functional areas:
+The codebase is organized into core modules in the `src/` directory:
 
-1. **Language Model API** (`src/api/`): Implements the LM namespace for chat functionality
-   - This API _MUST_ be compatible with VS Code's Language Model API except for special cases
+1. **Core Files**:
+   - `index.ts`: Main entry point that initializes language client and LM API integration
+   - `auth.ts`: Authentication management including CopilotAuthManager class and device flow
    - `chat.ts`: Chat model implementation using Copilot's streaming API
    - `config.ts`: Configuration management for chat features
-   - `models.ts`: Model selection and management
-   - `auth.ts`: Authentication token management
-   - `types.ts`: TypeScript type definitions
+   - `models.ts`: Model discovery and management
 
-2. **Suggestion System** (`src/suggestion/`): Handles inline completion via language server
-   - Language server client setup and configuration
-   - Authentication flow with GitHub device authentication
-   - Command registration for sign-in/out, enable/disable
-   - Status monitoring and user feedback
+2. **Main Functionality**:
+   - **Language Client**: Manages GitHub Copilot Language Server connection for inline completions
+   - **LM API Integration**: Implements VS Code-compatible Language Model API for chat functionality
+   - **Authentication**: Handles GitHub device authentication flow and token management
+   - **Model Management**: Discovers and manages available Copilot models
 
-The main entry point (`src/index.ts`) initializes both systems and returns the LM namespace for coc.nvim integration.
+The extension provides both inline code completion through the language server and chat functionality through the LM API.
 
 ## Development Commands
 
