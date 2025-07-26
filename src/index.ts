@@ -1,6 +1,7 @@
 import type { ExtensionContext } from 'coc.nvim';
 import { commands, window, workspace } from 'coc.nvim';
 import { CopilotAuthManager } from './auth';
+import { registerModelsWithLMAPI } from './chat';
 import { initializeLanguageClient } from './client';
 import { CopilotChatConfig } from './config';
 
@@ -42,45 +43,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
   console.log('GitHub Copilot: Registering commands');
   registerCommands(context, authManager);
 
-  // Schedule model registration after CocNvimInit and after the status is
-  // changed to Ready, to ensure @statiolake/coc-lm-api extension is activated
-  // and have access to the models.
-  // We shouldn't wait for completion here. If we do, that will cause a
-  // deadlock.
-
-  workspace.registerAutocmd({
-    event: 'User CocNvimInit',
-    callback: () => {
-      console.log('GitHub Copilot: received CocNvimInit event');
-    },
-  });
-  // void Promise.all([
-  //   new Promise<void>((resolve) => {
-  //     workspace.registerAutocmd({
-  //       event: 'User CocNvimInit',
-  //       callback: () => {
-  //         console.log('GitHub Copilot: received CocNvimInit event');
-  //         resolve();
-  //       },
-  //     });
-  //   }),
-  //   // new Promise<void>((resolve) => {
-  //   //   if (authManager.isAuthenticated()) {
-  //   //     resolve();
-  //   //     return;
-  //   //   }
-  //   //
-  //   //   authManager.onStatusChange((isSignedIn: boolean) => {
-  //   //     if (isSignedIn) {
-  //   //       console.log('GitHub Copilot: User signed in');
-  //   //       resolve();
-  //   //     }
-  //   //   });
-  //   // }),
-  // ]).then(async () => {
-  //   console.log('GitHub Copilot: Registering models');
-  //   await registerModelsWithLMAPI(config, authManager);
-  // });
+  console.log('GitHub Copilot: Registering models');
+  await registerModelsWithLMAPI(config, authManager);
 
   console.log('GitHub Copilot extension activation completed');
 }
