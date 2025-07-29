@@ -11,10 +11,11 @@ import {
   LanguageModelTextPart,
   LanguageModelToolCallPart,
 } from '@statiolake/coc-lm-api';
-import { type CancellationToken, type Extension, extensions, window } from 'coc.nvim';
+import { type CancellationToken, type Extension, extensions } from 'coc.nvim';
 import { z } from 'zod';
 import type { CopilotAuthManager } from './auth';
 import type { CopilotChatConfig } from './config';
+import { channel } from './log';
 import { GitHubCopilotModelManager, type Model } from './models';
 
 // Zod schemas for response validation
@@ -113,7 +114,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
     const chatMessages = messages.map((msg) => this.convertToChatMessage(msg));
 
     // Convert tools to GitHub Copilot format
-    const copilotTools = (options?.tools || []).map((tool: any) => ({
+    const copilotTools = (options?.tools || []).map((tool) => ({
       type: 'function',
       function: {
         name: tool.name,
@@ -191,7 +192,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
               return;
             }
 
-            const channel = window.createOutputChannel('GitHub Copilot');
             try {
               const chunk = JSON.parse(data);
               channel.appendLine(`Parsed chunk: ${JSON.stringify(chunk, null, 2)}`);
@@ -209,13 +209,17 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
                   }
 
                   if (choice.delta.tool_calls) {
-                    channel.appendLine(`Tool calls detected: ${JSON.stringify(choice.delta.tool_calls, null, 2)}`);
+                    channel.appendLine(
+                      `Tool calls detected: ${JSON.stringify(choice.delta.tool_calls, null, 2)}`
+                    );
                     const completedToolCalls = this.processToolCallChunks(
                       choice.delta.tool_calls,
                       toolCallChunks
                     );
                     if (completedToolCalls.length > 0) {
-                      channel.appendLine(`Yielding ${completedToolCalls.length} completed tool calls`);
+                      channel.appendLine(
+                        `Yielding ${completedToolCalls.length} completed tool calls`
+                      );
                     }
                     yield* completedToolCalls;
                   }
@@ -248,7 +252,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
   private convertToChatMessage(msg: LanguageModelChatMessage): unknown {
     const content = msg.content
-      .map((part: any) => {
+      .map((part) => {
         if (part instanceof LanguageModelTextPart) {
           return part.value;
         }
@@ -273,7 +277,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
     toolCallChunks: Map<number, ToolCallChunk>
   ): LanguageModelToolCallPart[] {
     const completedToolCalls: LanguageModelToolCallPart[] = [];
-    const channel = window.createOutputChannel('GitHub Copilot');
     channel.appendLine(`Processing tool call chunks: ${JSON.stringify(toolCalls, null, 2)}`);
 
     for (const toolCall of toolCalls) {
@@ -316,7 +319,9 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
       if (chunk.id && chunk.name && this.isCompleteJSON(chunk.arguments)) {
         try {
           const args = chunk.arguments ? JSON.parse(chunk.arguments) : {};
-          channel.appendLine(`Creating tool call part: ${chunk.name} with args: ${JSON.stringify(args)}`);
+          channel.appendLine(
+            `Creating tool call part: ${chunk.name} with args: ${JSON.stringify(args)}`
+          );
           const toolCallPart = new LanguageModelToolCallPart(chunk.id, chunk.name, args);
           completedToolCalls.push(toolCallPart);
           toolCallChunks.delete(index);
@@ -326,11 +331,13 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
           channel.appendLine(`Arguments that failed to parse: ${chunk.arguments}`);
         }
       } else {
-        channel.appendLine(`Tool call not yet complete - missing: ${JSON.stringify({
-          hasId: !!chunk.id,
-          hasName: !!chunk.name,
-          hasCompleteJSON: this.isCompleteJSON(chunk.arguments),
-        })}`);
+        channel.appendLine(
+          `Tool call not yet complete - missing: ${JSON.stringify({
+            hasId: !!chunk.id,
+            hasName: !!chunk.name,
+            hasCompleteJSON: this.isCompleteJSON(chunk.arguments),
+          })}`
+        );
       }
     }
 
@@ -360,7 +367,6 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
   }
 
   private isCompleteJSON(jsonString: string): boolean {
-    const channel = window.createOutputChannel('GitHub Copilot');
     if (!jsonString || jsonString.trim() === '') {
       channel.appendLine('JSON string is empty or null');
       return false;
@@ -386,7 +392,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
       typeof text === 'string'
         ? text
         : text.content
-            .map((part: any) =>
+            .map((part) =>
               part instanceof LanguageModelTextPart ? part.value : JSON.stringify(part)
             )
             .join('');
@@ -401,7 +407,6 @@ export async function registerModelsWithLMAPI(
   config: CopilotChatConfig,
   authManager: CopilotAuthManager
 ): Promise<void> {
-  const channel = window.createOutputChannel('GitHub Copilot');
   channel.appendLine('Starting model registration with LM API');
 
   // Note: getExtensionById() exists in coc.nvim implementation but not in type definitions

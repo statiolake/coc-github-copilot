@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { type LanguageClient, type StatusBarItem, window, workspace } from 'coc.nvim';
 import { z } from 'zod';
 import type { CopilotChatConfig } from './config';
+import { channel } from './log';
 
 // GitHub Copilot specific types
 interface ApiToken {
@@ -45,7 +46,6 @@ export function getCopilotConfigDir(): string {
 }
 
 function extractOauthTokenFromApps(appsContent: string, domain: string): string | undefined {
-  const channel = window.createOutputChannel('GitHub Copilot');
   channel.appendLine(`Parsing apps.json content for domain: ${domain}`);
 
   const data = JSON.parse(appsContent);
@@ -73,8 +73,9 @@ function extractOauthTokenFromApps(appsContent: string, domain: string): string 
 }
 
 export function extractOauthTokenFromConfig(configDir: string, domain: string): string {
-  const channel = window.createOutputChannel('GitHub Copilot');
-  channel.appendLine(`Attempting to extract OAuth token for domain: ${domain} from config dir: ${configDir}`);
+  channel.appendLine(
+    `Attempting to extract OAuth token for domain: ${domain} from config dir: ${configDir}`
+  );
 
   // Try apps.json first
   const appsPath = join(configDir, 'apps.json');
@@ -184,7 +185,6 @@ export class CopilotAuthManager {
     this.updateStatusBar();
 
     this.client.onNotification('didChangeStatus', (params: StatusNotification) => {
-      const channel = window.createOutputChannel('GitHub Copilot');
       channel.appendLine(`Status notification received: ${JSON.stringify(params)}`);
       const wasSignedIn = this.isSignedIn;
 

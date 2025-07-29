@@ -4,6 +4,7 @@ import { CopilotAuthManager } from './auth';
 import { registerModelsWithLMAPI } from './chat';
 import { initializeLanguageClient } from './client';
 import { CopilotChatConfig } from './config';
+import { channel } from './log';
 
 // Command registration
 export function registerCommands(context: ExtensionContext, authManager: CopilotAuthManager): void {
@@ -32,7 +33,6 @@ export function registerCommands(context: ExtensionContext, authManager: Copilot
 
 export async function activate(context: ExtensionContext): Promise<void> {
   const config = new CopilotChatConfig();
-  const channel = window.createOutputChannel('GitHub Copilot');
 
   channel.appendLine('Initializing language client');
   const client = await initializeLanguageClient(context);
