@@ -11,7 +11,7 @@ import {
   LanguageModelTextPart,
   LanguageModelToolCallPart,
 } from '@statiolake/coc-lm-api';
-import { type CancellationToken, type Extension, extensions } from 'coc.nvim';
+import { type CancellationToken, type Extension, extensions, window } from 'coc.nvim';
 import { z } from 'zod';
 import type { CopilotAuthManager } from './auth';
 import type { CopilotChatConfig } from './config';
@@ -113,7 +113,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
     const chatMessages = messages.map((msg) => this.convertToChatMessage(msg));
 
     // Convert tools to GitHub Copilot format
-    const copilotTools = (options?.tools || []).map((tool) => ({
+    const copilotTools = (options?.tools || []).map((tool: any) => ({
       type: 'function',
       function: {
         name: tool.name,
@@ -191,55 +191,42 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
               return;
             }
 
+            const channel = window.createOutputChannel('GitHub Copilot');
             try {
               const chunk = JSON.parse(data);
-              console.log('GitHub Copilot: Parsed chunk:', JSON.stringify(chunk, null, 2));
+              channel.appendLine(`Parsed chunk: ${JSON.stringify(chunk, null, 2)}`);
 
               const parseResult = ChatCompletionChunkSchema.safeParse(chunk);
 
               if (parseResult.success) {
                 const validChunk = parseResult.data;
-                console.log(
-                  'GitHub Copilot: Valid chunk with',
-                  validChunk.choices.length,
-                  'choices'
-                );
+                channel.appendLine(`Valid chunk with ${validChunk.choices.length} choices`);
 
                 for (const choice of validChunk.choices) {
                   if (choice.delta.content) {
-                    console.log('GitHub Copilot: Text content:', choice.delta.content);
+                    channel.appendLine(`Text content: ${choice.delta.content}`);
                     yield new LanguageModelTextPart(choice.delta.content);
                   }
 
                   if (choice.delta.tool_calls) {
-                    console.log(
-                      'GitHub Copilot: Tool calls detected:',
-                      JSON.stringify(choice.delta.tool_calls, null, 2)
-                    );
+                    channel.appendLine(`Tool calls detected: ${JSON.stringify(choice.delta.tool_calls, null, 2)}`);
                     const completedToolCalls = this.processToolCallChunks(
                       choice.delta.tool_calls,
                       toolCallChunks
                     );
                     if (completedToolCalls.length > 0) {
-                      console.log(
-                        'GitHub Copilot: Yielding',
-                        completedToolCalls.length,
-                        'completed tool calls'
-                      );
+                      channel.appendLine(`Yielding ${completedToolCalls.length} completed tool calls`);
                     }
                     yield* completedToolCalls;
                   }
                 }
               } else {
-                console.log(
-                  'GitHub Copilot: Chunk schema validation failed:',
-                  parseResult.error.message
-                );
-                console.log('GitHub Copilot: Invalid chunk data:', JSON.stringify(chunk, null, 2));
+                channel.appendLine(`Chunk schema validation failed: ${parseResult.error.message}`);
+                channel.appendLine(`Invalid chunk data: ${JSON.stringify(chunk, null, 2)}`);
               }
             } catch (jsonError) {
-              console.log('GitHub Copilot: JSON parse error:', jsonError);
-              console.log('GitHub Copilot: Raw data that failed to parse:', data);
+              channel.appendLine(`JSON parse error: ${jsonError}`);
+              channel.appendLine(`Raw data that failed to parse: ${data}`);
             }
           }
         }
@@ -261,7 +248,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
   private convertToChatMessage(msg: LanguageModelChatMessage): unknown {
     const content = msg.content
-      .map((part) => {
+      .map((part: any) => {
         if (part instanceof LanguageModelTextPart) {
           return part.value;
         }
@@ -286,16 +273,17 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
     toolCallChunks: Map<number, ToolCallChunk>
   ): LanguageModelToolCallPart[] {
     const completedToolCalls: LanguageModelToolCallPart[] = [];
-    console.log('GitHub Copilot: Processing tool call chunks:', JSON.stringify(toolCalls, null, 2));
+    const channel = window.createOutputChannel('GitHub Copilot');
+    channel.appendLine(`Processing tool call chunks: ${JSON.stringify(toolCalls, null, 2)}`);
 
     for (const toolCall of toolCalls) {
       const index = toolCall.index ?? 0;
-      console.log('GitHub Copilot: Processing tool call at index', index);
+      channel.appendLine(`Processing tool call at index ${index}`);
 
       // Get or create chunk
       let chunk = toolCallChunks.get(index);
       if (!chunk) {
-        console.log('GitHub Copilot: Creating new chunk for index', index);
+        channel.appendLine(`Creating new chunk for index ${index}`);
         chunk = {
           index,
           arguments: '',
@@ -305,48 +293,48 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
 
       // Update chunk with new data
       if (toolCall.id) {
-        console.log('GitHub Copilot: Setting chunk ID:', toolCall.id);
+        channel.appendLine(`Setting chunk ID: ${toolCall.id}`);
         chunk.id = toolCall.id;
       }
       if (toolCall.type) {
-        console.log('GitHub Copilot: Setting chunk type:', toolCall.type);
+        channel.appendLine(`Setting chunk type: ${toolCall.type}`);
         chunk.type = toolCall.type;
       }
       if (toolCall.function?.name) {
-        console.log('GitHub Copilot: Setting chunk name:', toolCall.function.name);
+        channel.appendLine(`Setting chunk name: ${toolCall.function.name}`);
         chunk.name = toolCall.function.name;
       }
       if (toolCall.function?.arguments) {
-        console.log('GitHub Copilot: Appending arguments:', toolCall.function.arguments);
+        channel.appendLine(`Appending arguments: ${toolCall.function.arguments}`);
         chunk.arguments += toolCall.function.arguments;
       }
 
-      console.log('GitHub Copilot: Current chunk state:', JSON.stringify(chunk, null, 2));
-      console.log('GitHub Copilot: Is JSON complete?', this.isCompleteJSON(chunk.arguments));
+      channel.appendLine(`Current chunk state: ${JSON.stringify(chunk, null, 2)}`);
+      channel.appendLine(`Is JSON complete? ${this.isCompleteJSON(chunk.arguments)}`);
 
       // Check if tool call is complete
       if (chunk.id && chunk.name && this.isCompleteJSON(chunk.arguments)) {
         try {
           const args = chunk.arguments ? JSON.parse(chunk.arguments) : {};
-          console.log('GitHub Copilot: Creating tool call part:', chunk.name, 'with args:', args);
+          channel.appendLine(`Creating tool call part: ${chunk.name} with args: ${JSON.stringify(args)}`);
           const toolCallPart = new LanguageModelToolCallPart(chunk.id, chunk.name, args);
           completedToolCalls.push(toolCallPart);
           toolCallChunks.delete(index);
-          console.log('GitHub Copilot: Tool call completed and added to results');
+          channel.appendLine('Tool call completed and added to results');
         } catch (parseError) {
-          console.log('GitHub Copilot: Failed to parse tool arguments:', parseError);
-          console.log('GitHub Copilot: Arguments that failed to parse:', chunk.arguments);
+          channel.appendLine(`Failed to parse tool arguments: ${parseError}`);
+          channel.appendLine(`Arguments that failed to parse: ${chunk.arguments}`);
         }
       } else {
-        console.log('GitHub Copilot: Tool call not yet complete - missing:', {
+        channel.appendLine(`Tool call not yet complete - missing: ${JSON.stringify({
           hasId: !!chunk.id,
           hasName: !!chunk.name,
           hasCompleteJSON: this.isCompleteJSON(chunk.arguments),
-        });
+        })}`);
       }
     }
 
-    console.log('GitHub Copilot: Returning', completedToolCalls.length, 'completed tool calls');
+    channel.appendLine(`Returning ${completedToolCalls.length} completed tool calls`);
     return completedToolCalls;
   }
 
@@ -372,17 +360,18 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
   }
 
   private isCompleteJSON(jsonString: string): boolean {
+    const channel = window.createOutputChannel('GitHub Copilot');
     if (!jsonString || jsonString.trim() === '') {
-      console.log('GitHub Copilot: JSON string is empty or null');
+      channel.appendLine('JSON string is empty or null');
       return false;
     }
 
     try {
       JSON.parse(jsonString);
-      console.log('GitHub Copilot: JSON is valid and complete');
+      channel.appendLine('JSON is valid and complete');
       return true;
     } catch (error) {
-      console.log('GitHub Copilot: JSON is incomplete or invalid:', error, 'JSON:', jsonString);
+      channel.appendLine(`JSON is incomplete or invalid: ${error} JSON: ${jsonString}`);
       return false;
     }
   }
@@ -397,7 +386,7 @@ export class CopilotLanguageModelChat implements LanguageModelChat {
       typeof text === 'string'
         ? text
         : text.content
-            .map((part) =>
+            .map((part: any) =>
               part instanceof LanguageModelTextPart ? part.value : JSON.stringify(part)
             )
             .join('');
@@ -412,7 +401,8 @@ export async function registerModelsWithLMAPI(
   config: CopilotChatConfig,
   authManager: CopilotAuthManager
 ): Promise<void> {
-  console.log('GitHub Copilot: Starting model registration with LM API');
+  const channel = window.createOutputChannel('GitHub Copilot');
+  channel.appendLine('Starting model registration with LM API');
 
   // Note: getExtensionById() exists in coc.nvim implementation but not in type definitions
   // biome-ignore lint/suspicious/noExplicitAny: coc.nvim API limitation - getExtensionById exists at runtime
@@ -423,24 +413,24 @@ export async function registerModelsWithLMAPI(
     throw new Error('LM API extension not found or not activated');
   }
   const lmApi: LmApi = lmApiExtension.exports;
-  console.log('GitHub Copilot: Successfully obtained LM API reference');
+  channel.appendLine('Successfully obtained LM API reference');
 
   // Initialize GitHub Copilot model manager
-  console.log('GitHub Copilot: Creating configuration and model manager');
+  channel.appendLine('Creating configuration and model manager');
   const modelManager = new GitHubCopilotModelManager(config, authManager);
 
-  console.log('GitHub Copilot: Fetching available models');
+  channel.appendLine('Fetching available models');
   const models = await modelManager.getModels();
-  console.log(`GitHub Copilot: Found ${models.length} models`);
+  channel.appendLine(`Found ${models.length} models`);
 
   // Register each model with LM API
   for (const model of models) {
-    console.log(`GitHub Copilot: Registering model ${model.id}`);
+    channel.appendLine(`Registering model ${model.id}`);
     const chatModel = new CopilotLanguageModelChat(model, config, authManager);
 
     lmApi.registerChatModel(chatModel);
-    console.log(`GitHub Copilot: Successfully registered model ${model.id}`);
+    channel.appendLine(`Successfully registered model ${model.id}`);
   }
 
-  console.log(`GitHub Copilot: Registered ${models.length} models with LM API`);
+  channel.appendLine(`Registered ${models.length} models with LM API`);
 }

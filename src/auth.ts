@@ -45,75 +45,75 @@ export function getCopilotConfigDir(): string {
 }
 
 function extractOauthTokenFromApps(appsContent: string, domain: string): string | undefined {
-  console.log(`Parsing apps.json content for domain: ${domain}`);
+  const channel = window.createOutputChannel('GitHub Copilot');
+  channel.appendLine(`Parsing apps.json content for domain: ${domain}`);
 
   const data = JSON.parse(appsContent);
-  console.log('apps.json keys found:', Object.keys(data));
+  channel.appendLine(`apps.json keys found: ${Object.keys(data).join(', ')}`);
 
   // apps.json format: {"github.com:Iv1.xxx": {"oauth_token": "...", "user": "..."}}
   for (const [key, value] of Object.entries(data)) {
-    console.log(`Checking key: ${key}`);
+    channel.appendLine(`Checking key: ${key}`);
     if (key.startsWith(`${domain}:`)) {
-      console.log(`Found matching domain key: ${key}`);
+      channel.appendLine(`Found matching domain key: ${key}`);
       if (typeof value === 'object' && value !== null) {
         const obj = value as Record<string, unknown>;
-        console.log('Object keys:', Object.keys(obj));
+        channel.appendLine(`Object keys: ${Object.keys(obj).join(', ')}`);
         if (obj.oauth_token && typeof obj.oauth_token === 'string') {
-          console.log('Found oauth_token in object');
+          channel.appendLine('Found oauth_token in object');
           return obj.oauth_token;
         }
-        console.log('No oauth_token found in object');
+        channel.appendLine('No oauth_token found in object');
       }
     }
   }
 
-  console.log('No matching domain key found in apps.json');
+  channel.appendLine('No matching domain key found in apps.json');
   return undefined;
 }
 
 export function extractOauthTokenFromConfig(configDir: string, domain: string): string {
-  console.log(
-    `Attempting to extract OAuth token for domain: ${domain} from config dir: ${configDir}`
-  );
+  const channel = window.createOutputChannel('GitHub Copilot');
+  channel.appendLine(`Attempting to extract OAuth token for domain: ${domain} from config dir: ${configDir}`);
 
   // Try apps.json first
   const appsPath = join(configDir, 'apps.json');
-  console.log(`Checking for apps.json at: ${appsPath}`);
+  channel.appendLine(`Checking for apps.json at: ${appsPath}`);
 
   if (existsSync(appsPath)) {
-    console.log('apps.json exists, attempting to read');
+    channel.appendLine('apps.json exists, attempting to read');
     const appsContent = readFileSync(appsPath, 'utf-8');
-    console.log(`apps.json content length: ${appsContent.length}`);
+    channel.appendLine(`apps.json content length: ${appsContent.length}`);
 
     const token = extractOauthTokenFromApps(appsContent, domain);
     if (token) {
-      console.log('Successfully extracted OAuth token from apps.json');
+      channel.appendLine('Successfully extracted OAuth token from apps.json');
       return token;
     }
-    console.log('No token found in apps.json');
+    channel.appendLine('No token found in apps.json');
   } else {
-    console.log('apps.json does not exist');
+    channel.appendLine('apps.json does not exist');
   }
 
   // Try hosts.json as fallback
   const hostsPath = join(configDir, 'hosts.json');
-  console.log(`Checking for hosts.json at: ${hostsPath}`);
+  channel.appendLine(`Checking for hosts.json at: ${hostsPath}`);
 
   if (existsSync(hostsPath)) {
-    console.log('hosts.json exists, attempting to read');
+    channel.appendLine('hosts.json exists, attempting to read');
     const hostsContent = readFileSync(hostsPath, 'utf-8');
-    console.log(`hosts.json content length: ${hostsContent.length}`);
+    channel.appendLine(`hosts.json content length: ${hostsContent.length}`);
 
     const hostsConfig = HostsConfigSchema.parse(JSON.parse(hostsContent));
 
     const hostConfig = hostsConfig[domain];
     if (hostConfig?.oauth_token) {
-      console.log('Successfully extracted OAuth token from hosts.json');
+      channel.appendLine('Successfully extracted OAuth token from hosts.json');
       return hostConfig.oauth_token;
     }
-    console.log('No token found in hosts.json');
+    channel.appendLine('No token found in hosts.json');
   } else {
-    console.log('hosts.json does not exist');
+    channel.appendLine('hosts.json does not exist');
   }
 
   throw new Error(`No OAuth token found for domain: ${domain}`);
@@ -184,7 +184,8 @@ export class CopilotAuthManager {
     this.updateStatusBar();
 
     this.client.onNotification('didChangeStatus', (params: StatusNotification) => {
-      console.log('GitHub Copilot: Status notification received:', params);
+      const channel = window.createOutputChannel('GitHub Copilot');
+      channel.appendLine(`Status notification received: ${JSON.stringify(params)}`);
       const wasSignedIn = this.isSignedIn;
 
       if (params.kind === 'Normal') {
@@ -204,9 +205,7 @@ export class CopilotAuthManager {
 
       // Trigger callback if sign-in status changed
       if (wasSignedIn !== this.isSignedIn && this.onStatusChangeCallback) {
-        console.log(
-          `GitHub Copilot: Auth status changed from ${wasSignedIn} to ${this.isSignedIn}`
-        );
+        channel.appendLine(`Auth status changed from ${wasSignedIn} to ${this.isSignedIn}`);
         this.onStatusChangeCallback(this.isSignedIn);
       }
     });

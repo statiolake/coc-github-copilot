@@ -32,19 +32,20 @@ export function registerCommands(context: ExtensionContext, authManager: Copilot
 
 export async function activate(context: ExtensionContext): Promise<void> {
   const config = new CopilotChatConfig();
+  const channel = window.createOutputChannel('GitHub Copilot');
 
-  console.log('GitHub Copilot: Initializing language client');
+  channel.appendLine('Initializing language client');
   const client = await initializeLanguageClient(context);
 
-  console.log('GitHub Copilot: Setting up authentication manager');
+  channel.appendLine('Setting up authentication manager');
   const authManager = new CopilotAuthManager(client, config);
   context.subscriptions.push(authManager);
 
-  console.log('GitHub Copilot: Registering commands');
+  channel.appendLine('Registering commands');
   registerCommands(context, authManager);
 
-  console.log('GitHub Copilot: Registering models');
+  channel.appendLine('Registering models');
   await registerModelsWithLMAPI(config, authManager);
 
-  console.log('GitHub Copilot extension activation completed');
+  channel.appendLine('Extension activation completed');
 }
